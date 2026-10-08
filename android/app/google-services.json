@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1012689696435",
+    "project_id": "bcksnap-7cc30",
+    "storage_bucket": "bcksnap-7cc30.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1012689696435:android:bfae9806b6805bc4a8a2c6",
+        "android_client_info": {
+          "package_name": "com.example.flutter_bcksnap"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSHqNvMAFVDLM4AvOvURZibM0qCr-t5o8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
