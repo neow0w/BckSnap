@@ -1,7 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
@@ -37,12 +37,8 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     try {
       await _auth.resetPassword(_emailCtrl.text.trim());
       setState(() => _sent = true);
-    } on FirebaseAuthException catch (e) {
-      setState(() {
-        _error = e.code == 'invalid-email'
-            ? 'Please enter a valid email address.'
-            : 'Could not send the email (${e.code}). Please try again.';
-      });
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
     } catch (_) {
       setState(() => _error = 'Something went wrong. Please try again.');
     } finally {
@@ -104,7 +100,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
+                color: Colors.red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(_error!, style: const TextStyle(color: Colors.red)),

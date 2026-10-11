@@ -1,7 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
 
 class SignUpScreen extends StatefulWidget {
@@ -32,22 +32,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  String _friendlyError(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'email-already-in-use':
-      case 'credential-already-in-use':
-        return 'That email is already registered. Try logging in instead.';
-      case 'invalid-email':
-        return 'Please enter a valid email address.';
-      case 'weak-password':
-        return 'Password is too weak. Use at least 6 characters.';
-      case 'network-request-failed':
-        return 'No internet connection. Please try again.';
-      default:
-        return 'Sign-up failed (${e.code}). Please try again.';
-    }
-  }
-
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -64,8 +48,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
       if (!mounted) return;
       context.go('/home'); // Sign-up successful -> connector A
-    } on FirebaseAuthException catch (e) {
-      setState(() => _error = _friendlyError(e));
+    } on ApiException catch (e) {
+      setState(() => _error = e.message);
     } catch (_) {
       setState(() => _error = 'Something went wrong. Please try again.');
     } finally {
@@ -166,7 +150,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
+                          color: Colors.red.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(

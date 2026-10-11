@@ -1,13 +1,13 @@
 import 'package:go_router/go_router.dart';
 
-import '../features/landing/landing_screen.dart';
-import 'screen_placeholder.dart';
-import '../features/screening/photo_screen.dart';
-import '../features/screening/scoliometer_screen.dart';
-import '../features/screening/result_screen.dart';
-import '../features/auth/signup_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/reset_password_screen.dart';
+import '../features/auth/signup_screen.dart';
+import '../features/landing/landing_screen.dart';
+import '../features/screening/photo_screen.dart';
+import '../features/screening/result_screen.dart';
+import '../features/screening/scoliometer_screen.dart';
+import 'screen_placeholder.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',

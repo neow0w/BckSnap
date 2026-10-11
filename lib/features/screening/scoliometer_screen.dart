@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
+import '../../services/screening_draft.dart';
+import '../../services/screening_service.dart';
+
 class ScoliometerScreen extends StatefulWidget {
   const ScoliometerScreen({super.key});
 
@@ -22,6 +25,7 @@ class _ScoliometerScreenState extends State<ScoliometerScreen> {
   bool _hasSensor = false;
   bool _testMode = false; // used when no sensor exists (e.g. PC browser)
   double _simAngle = 0;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -56,6 +60,37 @@ class _ScoliometerScreenState extends State<ScoliometerScreen> {
   void _capture() => setState(() => _captured = _angle);
 
   void _retake() => setState(() => _captured = null);
+
+  // "Is the user satisfied with the reading?" -> YES: save, then show result
+  Future<void> _confirm() async {
+    final angle = _captured!.abs();
+    setState(() => _saving = true);
+
+    bool saved = true;
+    try {
+      await ScreeningService().saveScreening(
+        angle: angle,
+        photoBytes: ScreeningDraft.photoBytes,
+        photoName: ScreeningDraft.photoName,
+      );
+      ScreeningDraft.clear();
+    } catch (_) {
+      saved = false; // still show the result, but tell the user
+    }
+
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (!saved) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The result could not be saved. Check your connection.',
+          ),
+        ),
+      );
+    }
+    context.go('/screening/result', extra: angle);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -178,13 +213,18 @@ class _ScoliometerScreenState extends State<ScoliometerScreen> {
         ),
         const SizedBox(height: 12),
         FilledButton(
-          onPressed: () =>
-              context.go('/screening/result', extra: _captured!.abs()),
-          child: const Text('Yes, see result'),
+          onPressed: _saving ? null : _confirm,
+          child: _saving
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Yes, see result'),
         ),
         const SizedBox(height: 12),
         OutlinedButton(
-          onPressed: _retake,
+          onPressed: _saving ? null : _retake,
           child: const Text('No, measure again'),
         ),
       ],
