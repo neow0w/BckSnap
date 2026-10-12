@@ -22,17 +22,12 @@ class ApiClient {
   static const String _tokenKey = 'access_token';
   static const Duration _timeout = Duration(seconds: 20);
 
-  /// Where the API lives.
-  /// - Chrome / web: your own PC
-  /// - Android emulator: 10.0.2.2 is the emulator's name for your PC
-  /// - A real phone needs your PC's Wi-Fi address (set up later)
-  static String get baseUrl {
-    if (kIsWeb) return 'http://127.0.0.1:8000';
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:8000';
-    }
-    return 'http://127.0.0.1:8000';
-  }
+  // Development: the API runs on your PC. On a phone connected by USB,
+  // "adb reverse" makes 127.0.0.1 point to your PC.
+  // For a deployed API, build with: --dart-define=API_URL=https://your-api
+  static const String _apiOverride = String.fromEnvironment('API_URL');
+  static String get baseUrl =>
+      _apiOverride.isNotEmpty ? _apiOverride : 'http://127.0.0.1:8000';
 
   String? _token;
   String? get token => _token;

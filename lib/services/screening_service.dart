@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../models/screening.dart';
 import 'api_client.dart';
 
 class ScreeningService {
@@ -19,5 +20,13 @@ class ScreeningService {
       fileName: photoName,
     ) as Map<String, dynamic>;
     return data['id'] as int?;
+  }
+
+  // The logged-in user's screenings, newest first.
+  Future<List<Screening>> myScreenings() async {
+    final data = await _api.get('/screenings/mine') as List<dynamic>;
+    return data
+        .map((e) => Screening.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 }
