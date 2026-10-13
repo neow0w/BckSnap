@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -16,17 +17,44 @@ class ApiException implements Exception {
 }
 
 class ApiClient {
-  ApiClient._();
-  static final ApiClient instance = ApiClient._();
+  ApiClient({
+    http.Client? httpClient,
+    String? baseUrl,
+    this.requestTimeout = const Duration(seconds: 20),
+  }) : _httpClient = httpClient ?? http.Client(),
+       _configuredBaseUrl = baseUrl;
+
+  static final ApiClient instance = ApiClient();
 
   static const String _tokenKey = 'access_token';
-  static const Duration _timeout = Duration(seconds: 20);
+  static const String _apiBaseOverride = String.fromEnvironment(
+    'BCKSNAP_API_BASE_URL',
+  );
+
+  final http.Client _httpClient;
+  final String? _configuredBaseUrl;
+  final Duration requestTimeout;
 
   /// Where the API lives.
   /// - Chrome / web: your own PC
   /// - Android emulator: 10.0.2.2 is the emulator's name for your PC
-  /// - A real phone needs your PC's Wi-Fi address (set up later)
+  /// - A physical Android device needs the computer's reachable LAN address
   static String get baseUrl {
+    return _resolveBaseUrl(_apiBaseOverride);
+  }
+
+  static String get diagnosticOrigin {
+    final uri = Uri.tryParse(baseUrl);
+    if (uri == null || !uri.hasAuthority) return 'invalid API origin';
+    final port = uri.hasPort ? ':${uri.port}' : '';
+    return '${uri.scheme}://${uri.host}$port';
+  }
+
+  String get _effectiveBaseUrl =>
+      _configuredBaseUrl ?? _resolveBaseUrl(_apiBaseOverride);
+
+  static String _resolveBaseUrl(String override) {
+    if (override.isNotEmpty) return override;
     if (kIsWeb) return 'http://127.0.0.1:8000';
     if (defaultTargetPlatform == TargetPlatform.android) {
       return 'http://10.0.2.2:8000';
@@ -64,16 +92,23 @@ class ApiClient {
     if (_token != null) 'Authorization': 'Bearer $_token',
   };
 
-  Uri _uri(String path) => Uri.parse('$baseUrl$path');
+  Uri _uri(String path) {
+    final origin = _effectiveBaseUrl.endsWith('/')
+        ? _effectiveBaseUrl.substring(0, _effectiveBaseUrl.length - 1)
+        : _effectiveBaseUrl;
+    return Uri.parse('$origin${path.startsWith('/') ? path : '/$path'}');
+  }
 
   Future<dynamic> get(String path) async {
-    final res = await _send(() => http.get(_uri(path), headers: _headers()));
+    final res = await _send(
+      () => _httpClient.get(_uri(path), headers: _headers()),
+    );
     return _decode(res);
   }
 
   Future<dynamic> post(String path, {Map<String, dynamic>? body}) async {
     final res = await _send(
-      () => http.post(
+      () => _httpClient.post(
         _uri(path),
         headers: _headers(json: true),
         body: jsonEncode(body ?? {}),
@@ -84,7 +119,7 @@ class ApiClient {
 
   Future<dynamic> patch(String path, {Map<String, dynamic>? body}) async {
     final res = await _send(
-      () => http.patch(
+      () => _httpClient.patch(
         _uri(path),
         headers: _headers(json: true),
         body: jsonEncode(body ?? {}),
@@ -100,10 +135,12 @@ class ApiClient {
     String fileField = 'photo',
     Uint8List? fileBytes,
     String? fileName,
+    Map<String, String> headers = const {},
   }) async {
     final res = await _send(() async {
       final request = http.MultipartRequest('POST', _uri(path));
       request.headers.addAll(_headers());
+      request.headers.addAll(headers);
       request.fields.addAll(fields);
       if (fileBytes != null) {
         request.files.add(
@@ -114,7 +151,7 @@ class ApiClient {
           ),
         );
       }
-      final streamed = await request.send();
+      final streamed = await _httpClient.send(request);
       return http.Response.fromStream(streamed);
     });
     return _decode(res);
@@ -122,7 +159,9 @@ class ApiClient {
 
   /// For downloading private files such as a patient's photo.
   Future<Uint8List> getBytes(String path) async {
-    final res = await _send(() => http.get(_uri(path), headers: _headers()));
+    final res = await _send(
+      () => _httpClient.get(_uri(path), headers: _headers()),
+    );
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw ApiException(res.statusCode, _errorMessage(res));
     }
@@ -133,11 +172,19 @@ class ApiClient {
 
   Future<http.Response> _send(Future<http.Response> Function() call) async {
     try {
-      return await call().timeout(_timeout);
-    } catch (_) {
+      return await call().timeout(requestTimeout);
+    } on TimeoutException {
+      throw ApiException(
+        408,
+        'The request timed out while connecting to $diagnosticOrigin. '
+        'For a physical phone, '
+        'use the laptop LAN address, run Uvicorn with --host 0.0.0.0, and '
+        'check the local firewall and wired-to-wireless network path.',
+      );
+    } on http.ClientException {
       throw ApiException(
         0,
-        'Cannot reach the server. Check your internet connection and try again.',
+        'Cannot reach the BckSnap server. Check the API address, that the backend is running, and that your phone and computer are on the same Wi-Fi network.',
       );
     }
   }
@@ -147,12 +194,28 @@ class ApiClient {
       throw ApiException(res.statusCode, _errorMessage(res));
     }
     if (res.body.isEmpty) return null;
-    return jsonDecode(utf8.decode(res.bodyBytes));
+    try {
+      return jsonDecode(utf8.decode(res.bodyBytes));
+    } on FormatException {
+      throw ApiException(
+        502,
+        'The server returned an invalid response. Please retry or contact the server administrator.',
+      );
+    }
   }
 
   /// FastAPI errors look like {"detail": "text"} or, for validation
   /// problems, {"detail": [{"msg": "..."}]}.
   String _errorMessage(http.Response res) {
+    if (res.statusCode == 401) {
+      return 'Your session has expired or you need to sign in. Please sign in and retry.';
+    }
+    if (res.statusCode == 403) {
+      return 'Your account is not authorized to perform this action.';
+    }
+    if (res.statusCode >= 500) {
+      return 'The server encountered an error (HTTP ${res.statusCode}). Please retry later.';
+    }
     try {
       final data = jsonDecode(utf8.decode(res.bodyBytes));
       final detail = data is Map ? data['detail'] : null;

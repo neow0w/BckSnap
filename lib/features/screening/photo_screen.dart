@@ -16,18 +16,55 @@ class PhotoScreen extends StatefulWidget {
 
 class _PhotoScreenState extends State<PhotoScreen> {
   final ImagePicker _picker = ImagePicker();
+  final AuthService _auth = AuthService();
   Uint8List? _photoBytes;
   String? _photoName;
-
-  @override
-  void initState() {
-    super.initState();
-    // Make sure there is a session (guest or logged in) before screening.
-    // Does nothing if the user is already signed in.
-    AuthService().signInAsGuest().catchError((_) {});
-  }
+  bool _authChoiceMade = false;
 
   Future<void> _pick(ImageSource source) async {
+    if (_auth.currentUser == null && !_authChoiceMade) {
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Before you begin'),
+          content: const Text(
+            'Create an account or log in to keep your screenings with your profile. '
+            'You can also continue as a guest.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'cancel'),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'login'),
+              child: const Text('Log In'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, 'signup'),
+              child: const Text('Create Account'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, 'guest'),
+              child: const Text('Continue as guest'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || choice == null || choice == 'cancel') return;
+      if (choice == 'signup' || choice == 'login') {
+        final path = choice == 'signup' ? '/signup' : '/login';
+        context.push(
+          Uri(
+            path: path,
+            queryParameters: {'next': '/screening/photo'},
+          ).toString(),
+        );
+        return;
+      }
+      _authChoiceMade = true;
+    }
+
     final XFile? picked = await _picker.pickImage(
       source: source,
       imageQuality: 85,

@@ -5,7 +5,9 @@ import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({this.nextRoute = '/home', super.key});
+
+  final String nextRoute;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -51,7 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (role == 'doctor') {
         context.go('/doctor'); // connector C
       } else {
-        context.go('/home'); // connector A
+        context.go(widget.nextRoute);
       }
     } on ApiException catch (e) {
       setState(() => _error = e.message);
@@ -67,7 +69,11 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Login'),
-        leading: BackButton(onPressed: () => context.go('/')),
+        leading: BackButton(
+          onPressed: () => context.go(
+            widget.nextRoute == '/screening/photo' ? '/screening/photo' : '/',
+          ),
+        ),
       ),
       body: SafeArea(
         child: Center(
@@ -154,8 +160,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 12),
                     TextButton(
-                      onPressed: () => context.go('/screening/photo'),
-                      child: const Text('New here? Start a screening'),
+                      onPressed: () => context.push(
+                        Uri(
+                          path: '/signup',
+                          queryParameters: {'next': widget.nextRoute},
+                        ).toString(),
+                      ),
+                      child: const Text(
+                        "Don't have an account? Create Account",
+                      ),
                     ),
                   ],
                 ),

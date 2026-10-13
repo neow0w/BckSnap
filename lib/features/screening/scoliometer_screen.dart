@@ -61,35 +61,29 @@ class _ScoliometerScreenState extends State<ScoliometerScreen> {
 
   void _retake() => setState(() => _captured = null);
 
-  // "Is the user satisfied with the reading?" -> YES: save, then show result
+  // Show the completed reading immediately; the result page handles saving.
   Future<void> _confirm() async {
     final angle = _captured!.abs();
-    setState(() => _saving = true);
-
-    bool saved = true;
-    try {
-      await ScreeningService().saveScreening(
-        angle: angle,
-        photoBytes: ScreeningDraft.photoBytes,
-        photoName: ScreeningDraft.photoName,
-      );
-      ScreeningDraft.clear();
-    } catch (_) {
-      saved = false; // still show the result, but tell the user
-    }
-
-    if (!mounted) return;
-    setState(() => _saving = false);
-    if (!saved) {
+    if (!angle.isFinite || angle < 0 || angle > 90) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'The result could not be saved. Check your connection.',
+            'This reading is outside the supported range. Please measure again.',
           ),
         ),
       );
+      return;
     }
-    context.go('/screening/result', extra: angle);
+    setState(() => _saving = true);
+
+    final submission = ScreeningSubmission.create(
+      angle: angle,
+      photoBytes: ScreeningDraft.photoBytes,
+      photoName: ScreeningDraft.photoName,
+    );
+    ScreeningDraft.clear();
+    if (!mounted) return;
+    context.go('/screening/result', extra: submission);
   }
 
   @override

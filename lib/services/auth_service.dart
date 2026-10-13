@@ -47,7 +47,6 @@ class AuthService {
 
   // Fig 7: a new visitor screens as a guest (temporary account).
   Future<void> signInAsGuest() async {
-    if (_user != null) return;
     if (_api.hasToken) {
       await _refresh();
       if (_user != null) return;
@@ -58,14 +57,32 @@ class AuthService {
   // Fig 7: Sign up. The API upgrades the guest account, so the
   // screening the guest already did is kept.
   Future<void> signUp({
-    required String name,
+    required String firstName,
+    String? middleInitial,
+    required String lastName,
+    required String birthdate,
+    required String address,
+    required String gender,
     required String email,
+    required String contactNumber,
     required String password,
+    required String confirmPassword,
   }) async {
     await _apply(
       await _api.post(
         '/auth/signup',
-        body: {'name': name, 'email': email, 'password': password},
+        body: {
+          'first_name': firstName,
+          'middle_initial': middleInitial,
+          'last_name': lastName,
+          'birthdate': birthdate,
+          'address': address,
+          'gender': gender,
+          'email': email,
+          'contact_number': contactNumber,
+          'password': password,
+          'confirm_password': confirmPassword,
+        },
       ),
     );
   }

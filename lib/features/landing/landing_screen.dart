@@ -23,7 +23,7 @@ class LandingScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Quick, smartphone-based screening and clinic referral.',
+                'Quick, smartphone-based screening and clinic discovery.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
