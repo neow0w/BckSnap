@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
+import '../../core/auth_destination.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

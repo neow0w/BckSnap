@@ -29,6 +29,15 @@ class ApiClient {
   static String get baseUrl =>
       _apiOverride.isNotEmpty ? _apiOverride : 'http://127.0.0.1:8000';
 
+  /// Scheme + host + port only (no path, no token). Safe for debug logs.
+  static String get diagnosticOrigin {
+    try {
+      return Uri.parse(baseUrl).origin;
+    } catch (_) {
+      return 'unknown';
+    }
+  }
+
   String? _token;
   String? get token => _token;
   bool get hasToken => _token != null;

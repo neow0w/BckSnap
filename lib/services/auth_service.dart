@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import '../core/format.dart';
 import '../models/app_user.dart';
 import 'api_client.dart';
 
@@ -57,15 +60,39 @@ class AuthService {
 
   // Fig 7: Sign up. The API upgrades the guest account, so the
   // screening the guest already did is kept.
+  //
+  // Consent is sent with the account so the server can store it as a record.
+  // For ages 9-17 the guardian and assent fields are filled in.
   Future<void> signUp({
     required String name,
     required String email,
     required String password,
+    required DateTime dateOfBirth,
+    required String privacyVersion,
+    String? guardianName,
+    String? guardianRelationship,
+    String? guardianContact,
+    bool guardianConsent = false,
+    bool minorAssent = false,
   }) async {
     await _apply(
       await _api.post(
         '/auth/signup',
-        body: {'name': name, 'email': email, 'password': password},
+        body: {
+          'name': name,
+          'email': email,
+          'password': password,
+          'date_of_birth': isoDate(dateOfBirth),
+          'privacy_notice_version': privacyVersion,
+          'privacy_consent': true,
+          'health_data_consent': true,
+          'consented_at': DateTime.now().toUtc().toIso8601String(),
+          'guardian_name': ?guardianName,
+          'guardian_relationship': ?guardianRelationship,
+          'guardian_contact': ?guardianContact,
+          'guardian_consent': guardianConsent,
+          'minor_assent': minorAssent,
+        },
       ),
     );
   }
@@ -80,9 +107,61 @@ class AuthService {
     );
   }
 
-  // Fig 7: Reset password -> "Password reset email sent"
+  // Fig 7: Reset password, step 1 -> "Password reset email sent"
   Future<void> resetPassword(String email) async {
     await _api.post('/auth/forgot-password', body: {'email': email});
+  }
+
+  // Reset password, step 2: the code from the email + the new password.
+  // FIELD NAMES: change 'token' / 'new_password' if your API differs.
+  Future<void> confirmPasswordReset({
+    required String token,
+    required String newPassword,
+  }) async {
+    await _api.post(
+      '/auth/reset-password',
+      body: {'token': token, 'new_password': newPassword},
+    );
+  }
+
+  // ---- profile --------------------------------------------------------
+
+  /// PATCH /auth/me. Empty phone/address are sent as null (= cleared).
+  Future<void> updateProfile({
+    required String name,
+    String? phone,
+    String? address,
+  }) async {
+    final data = await _api.patch(
+      '/auth/me',
+      body: {'name': name, 'phone': phone, 'address': address},
+    );
+    if (data is Map<String, dynamic> && data.containsKey('id')) {
+      _user = AppUser.fromJson(data);
+    } else {
+      await _refresh();
+    }
+  }
+
+  /// POST /auth/me/photo (multipart, field name "photo")
+  Future<void> uploadPhoto(Uint8List bytes, String fileName) async {
+    await _api.postMultipart(
+      '/auth/me/photo',
+      fileField: 'photo',
+      fileBytes: bytes,
+      fileName: fileName,
+    );
+    await _refresh();
+  }
+
+  /// GET /auth/me/photo. Null when there is no picture (or it failed).
+  Future<Uint8List?> loadMyPhoto() async {
+    if (_user?.hasPhoto != true) return null;
+    try {
+      return await _api.getBytes('/auth/me/photo');
+    } on ApiException {
+      return null;
+    }
   }
 
   Future<void> logout() async {

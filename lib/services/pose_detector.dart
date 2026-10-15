@@ -65,7 +65,15 @@ class BodyPoseDetector {
 
   /// Analyses one camera frame. Returns null when it was skipped
   /// because the previous frame is still being processed.
-  Future<PoseFrame?> detect(CameraImage image, int sensorOrientation) async {
+  ///
+  /// Normally the frame is analysed at half size (fast, for the live
+  /// checker). With [fullSize] the full camera resolution is used
+  /// (slower, for the capture burst).
+  Future<PoseFrame?> detect(
+    CameraImage image,
+    int sensorOrientation, {
+    bool fullSize = false,
+  }) async {
     if (!_ready || _busy) return null;
     if (image.planes.length < 3) {
       throw StateError(
@@ -82,34 +90,46 @@ class BodyPoseDetector {
       final u = image.planes[1];
       final v = image.planes[2];
 
+      final step = fullSize ? 1 : 2;
+      final outW = (w ~/ step) & ~1;
+      final outH = (h ~/ step) & ~1;
+
       // WORKAROUND: the plugin's built-in colour conversion mis-reads the
-      // U and V planes on most phones (wrong colours). So we repack them
-      // into tight planes first and pass a stride that makes the plugin's
-      // maths land on the right bytes. The brightness (Y) plane is passed
-      // untouched. Re-check this if the plugin is ever updated.
+      // U and V planes on most phones (wrong colours). So we build tight
+      // planes ourselves and pass a stride that makes the plugin's maths
+      // land on the right bytes. Re-check this if the plugin is updated.
       final result = await KwonMediapipeLandmarker.detectFromCamera(
         planes: [
-          y.bytes,
-          _tightPlane(
+          _shrink(
+            y.bytes,
+            y.bytesPerRow,
+            y.bytesPerPixel ?? 1,
+            outW,
+            outH,
+            step,
+          ),
+          _shrink(
             u.bytes,
             u.bytesPerRow,
             u.bytesPerPixel ?? 1,
-            w ~/ 2,
-            h ~/ 2,
+            outW ~/ 2,
+            outH ~/ 2,
+            step,
           ),
-          _tightPlane(
+          _shrink(
             v.bytes,
             v.bytesPerRow,
             v.bytesPerPixel ?? 1,
-            w ~/ 2,
-            h ~/ 2,
+            outW ~/ 2,
+            outH ~/ 2,
+            step,
           ),
         ],
-        width: w,
-        height: h,
+        width: outW,
+        height: outH,
         rotation: sensorOrientation,
         format: 'YUV420',
-        bytesPerRow: [y.bytesPerRow, w, w],
+        bytesPerRow: [outW, outW, outW],
       );
       watch.stop();
 
@@ -129,20 +149,24 @@ class BodyPoseDetector {
     } catch (_) {}
   }
 
-  /// Copies a chroma plane into a tightly packed (width x height) plane.
-  static Uint8List _tightPlane(
+  /// Copies every [step]-th sample (in both directions) of a plane into a
+  /// tightly packed (outW x outH) plane. With step 1 it is a plain copy
+  /// without the row padding. Works for Y and for chroma planes, with or
+  /// without interleaved pixels.
+  static Uint8List _shrink(
     Uint8List src,
     int rowStride,
     int pixelStride,
-    int w,
-    int h,
+    int outW,
+    int outH,
+    int step,
   ) {
-    final out = Uint8List(w * h);
+    final out = Uint8List(outW * outH);
     var o = 0;
-    for (var row = 0; row < h; row++) {
-      final rowStart = row * rowStride;
-      for (var col = 0; col < w; col++) {
-        final i = rowStart + col * pixelStride;
+    for (var r = 0; r < outH; r++) {
+      final rowStart = r * step * rowStride;
+      for (var c = 0; c < outW; c++) {
+        final i = rowStart + c * step * pixelStride;
         out[o++] = i < src.length ? src[i] : 128;
       }
     }

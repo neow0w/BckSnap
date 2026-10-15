@@ -15,6 +15,8 @@ import '../../services/screening_draft.dart';
 import 'back_guide.dart';
 import 'guide_checker.dart';
 import 'pose_overlay.dart';
+import 'photo_quality.dart';
+import '../../services/pose_burst.dart';
 
 enum _CamState { checking, needsPermission, blocked, noCamera, error, ready }
 
@@ -41,6 +43,12 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
   final ValueNotifier<GuideStatus?> _status = ValueNotifier<GuideStatus?>(null);
   String? _detectorError;
   int _lastRunMs = 0;
+  final List<PoseFrame> _recent = [];
+  final List<GuideStatus> _recentStatus = [];
+  PhotoQuality? _quality;
+  // Capture burst
+  PoseBurst? _burst; // set while the burst is being collected
+  final ValueNotifier<int> _burstCount = ValueNotifier<int>(0);
 
   // How the phone is held (from the accelerometer)
   StreamSubscription<AccelerometerEvent>? _accelSub;
@@ -65,6 +73,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     _detector.stop();
     _pose.dispose();
     _status.dispose();
+    _burstCount.dispose();
     super.dispose();
   }
 
@@ -91,6 +100,8 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
   void _clearLive() {
     _pose.value = null;
     _status.value = null;
+    _recent.clear();
+    _recentStatus.clear();
     _checker.reset();
   }
 
@@ -209,21 +220,45 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
 
   Future<void> _onFrame(CameraImage image) async {
     final c = _controller;
-    if (c == null || _captured != null || _capturing) return;
+    if (c == null || _captured != null) return;
 
-    // At most 5 analyses per second, and never two at once.
+    final burst = _burst;
+    if (_capturing && burst == null) return; // the photo is being taken
+
+    // Live checking: at most 5 analyses per second.
+    // During the burst: as fast as the detector allows, at full resolution.
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (_detector.busy || now - _lastRunMs < 200) return;
+    if (_detector.busy) return;
+    if (burst == null && now - _lastRunMs < 200) return;
     _lastRunMs = now;
 
     try {
       final frame = await _detector.detect(
         image,
         c.description.sensorOrientation,
+        fullSize: burst != null && BurstRules.fullSize,
       );
       if (!mounted || frame == null || _controller != c) return;
+
+      if (burst != null) {
+        burst.add(frame);
+        _burstCount.value = burst.count;
+        return;
+      }
+
+      final status = _checker.update(
+        frame,
+        tilt: _tilt,
+        aspect: 1 / c.value.aspectRatio,
+      );
       _pose.value = frame;
-      _status.value = _checker.update(frame, tilt: _tilt);
+      _status.value = status;
+      _recent.add(frame);
+      _recentStatus.add(status);
+      if (_recent.length > QualityRules.windowFrames) _recent.removeAt(0);
+      if (_recentStatus.length > QualityRules.windowFrames) {
+        _recentStatus.removeAt(0);
+      }
     } catch (e) {
       if (mounted && _detectorError == null) {
         setState(() => _detectorError = e.toString());
@@ -240,9 +275,15 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     final tilt = t == null
         ? ''
         : '   Tilt ${t.rollDeg.toStringAsFixed(0)}/${t.pitchDeg.toStringAsFixed(0)}';
+    final st = _status.value;
+    final facing = st == null
+        ? ''
+        : '\nWidth ${st.widthRatio.toStringAsFixed(2)}   '
+              'Nose ${(st.noseScore * 100).round()}   '
+              'Left shoulder on image ${st.leftOnImageLeft ? "left" : "right"}';
     return '${f.millis} ms   '
         'Shoulders ${s(PoseIndex.leftShoulder)}/${s(PoseIndex.rightShoulder)}   '
-        'Hips ${s(PoseIndex.leftHip)}/${s(PoseIndex.rightHip)}$tilt';
+        'Hips ${s(PoseIndex.leftHip)}/${s(PoseIndex.rightHip)}$tilt$facing';
   }
 
   // ---- capture --------------------------------------------------------------
@@ -251,13 +292,30 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     final c = _controller;
     if (c == null || !c.value.isInitialized || _capturing) return;
     setState(() => _capturing = true);
+
+    // Judge the live frames first (before they are cleared).
+    final live = PhotoQuality.assess(
+      List<PoseFrame>.of(_recent),
+      List<GuideStatus>.of(_recentStatus),
+    );
+
     try {
+      // 1. Short burst: collect detections while the patient holds still.
+      AveragedPose? averaged;
+      if (_detector.ready && c.value.isStreamingImages) {
+        averaged = await _collectBurst();
+      }
+
+      // 2. Then take the photo.
       if (c.value.isStreamingImages) await c.stopImageStream();
       final file = await c.takePicture();
       final bytes = await file.readAsBytes();
       if (!mounted) return;
       _clearLive();
-      setState(() => _captured = bytes);
+      setState(() {
+        _captured = bytes;
+        _quality = live.withBurst(averaged);
+      });
     } on CameraException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -271,15 +329,38 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     }
   }
 
+  /// Collects detections for a moment and returns their average.
+  Future<AveragedPose?> _collectBurst() async {
+    final burst = PoseBurst();
+    _burstCount.value = 0;
+    _burst = burst;
+    final deadline =
+        DateTime.now().millisecondsSinceEpoch + BurstRules.timeoutMs;
+    try {
+      while (burst.count < BurstRules.frames &&
+          DateTime.now().millisecondsSinceEpoch < deadline &&
+          mounted) {
+        await Future.delayed(const Duration(milliseconds: 40));
+      }
+    } finally {
+      _burst = null;
+    }
+    return burst.average();
+  }
+
   void _continue() {
     ScreeningDraft.photoBytes = _captured;
     ScreeningDraft.photoName = 'back_photo.jpg';
+    ScreeningDraft.landmarks = _quality?.burst;
     context.go('/screening/test');
   }
 
   void _retake() {
     _clearLive();
-    setState(() => _captured = null);
+    setState(() {
+      _captured = null;
+      _quality = null;
+    });
     final c = _controller;
     if (c == null) {
       _start();
@@ -437,10 +518,17 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
                 ),
                 onPressed: _capturing ? null : _capture,
                 child: _capturing
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                    ? ValueListenableBuilder<int>(
+                        valueListenable: _burstCount,
+                        builder: (context, n, _) => SizedBox(
+                          width: 28,
+                          height: 28,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            color: Colors.white,
+                            value: (n / BurstRules.frames).clamp(0.0, 1.0),
+                          ),
+                        ),
                       )
                     : const Icon(Icons.camera_alt, size: 32),
               ),
@@ -459,6 +547,8 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
         final ready = st?.ready ?? false;
         final String hint = _detectorError != null
             ? 'Pose detector problem: $_detectorError'
+            : _capturing
+            ? 'Hold still... capturing'
             : (st?.hint ?? 'Starting pose detection...');
 
         return Container(
@@ -493,7 +583,7 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
               const SizedBox(height: 4),
               Text(
                 _poseStatus(),
-                maxLines: 1,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: Colors.white70, fontSize: 11),
               ),
@@ -524,26 +614,93 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
   }
 
   Widget _buildReview() {
+    final q = _quality;
+    final good = q?.good ?? true; // no pose data (gallery photo) never blocks
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (q != null) _qualityCard(q),
+          const SizedBox(height: 8),
           const Text(
             'Is the image clear and within the guidelines?',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Expanded(child: Image.memory(_captured!, fit: BoxFit.contain)),
           const SizedBox(height: 12),
-          FilledButton(
-            onPressed: _continue,
-            child: const Text('Yes, continue'),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton(onPressed: _retake, child: const Text('No, retake')),
+          if (good) ...[
+            FilledButton(
+              onPressed: _continue,
+              child: const Text('Yes, continue'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(onPressed: _retake, child: const Text('No, retake')),
+          ] else ...[
+            FilledButton(onPressed: _retake, child: const Text('Retake photo')),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _continue,
+              child: const Text('Use this photo anyway'),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _qualityCard(PhotoQuality q) {
+    final color = q.good ? Colors.green : Colors.orange;
+    return Card(
+      color: color.withValues(alpha: 0.15),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  q.good ? Icons.check_circle : Icons.warning_amber_rounded,
+                  color: color,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    q.good
+                        ? 'Quality check passed'
+                        : 'Image quality is low: retake recommended',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            for (final p in q.problems)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 32),
+                child: Text('• $p'),
+              ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 32),
+              child: Text(
+                'Landmark score: ${(q.averageScore * 100).round()}%  (${q.frames} frames)',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            if (q.burst != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, left: 32),
+                child: Text(
+                  'Steadiness: ${(q.burst!.spread * 100).toStringAsFixed(1)}% movement  '
+                  '(${q.burst!.frames} frames averaged)',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

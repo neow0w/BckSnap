@@ -21,6 +21,11 @@ class GuideRules {
   // All four torso points must stay inside the guide box (with a margin).
   static const double boxMargin = 0.01;
 
+  // Facing: shoulder width divided by torso height. Squarely facing the
+  // camera (front or back) I expect about 0.7 to 0.9, turned 45 degrees
+  // about 0.55, sideways close to 0. Confirm with the numbers on screen.
+  static const double minWidthRatio = 0.5;
+
   // Phone held upright, in degrees.
   static const double rollTol = 4;
   static const double pitchTol = 6;
@@ -45,7 +50,8 @@ class PhoneTilt {
 class CheckItem {
   final String label;
   final bool ok;
-  const CheckItem(this.label, this.ok);
+  final String? problem; // what went wrong, in plain words (null when OK)
+  const CheckItem(this.label, this.ok, [this.problem]);
 }
 
 class GuideStatus {
@@ -54,12 +60,21 @@ class GuideStatus {
   final bool allOk; // every check passes right now
   final double progress; // 0..1, how long everything has been OK
   final bool ready; // OK for long enough: good moment to take the photo
+
+  // For tuning only (shown in the small grey line):
+  final double widthRatio; // shoulder width / torso height
+  final double noseScore; // nose visibility, 0..1
+  final bool leftOnImageLeft; // left shoulder drawn left of the right shoulder
+
   const GuideStatus({
     required this.items,
     required this.hint,
     required this.allOk,
     required this.progress,
     required this.ready,
+    this.widthRatio = 0,
+    this.noseScore = 0,
+    this.leftOnImageLeft = false,
   });
 }
 
@@ -79,7 +94,11 @@ class GuideChecker {
     _failSince = null;
   }
 
-  GuideStatus update(PoseFrame frame, {PhoneTilt? tilt}) {
+  GuideStatus update(
+    PoseFrame frame, {
+    PhoneTilt? tilt,
+    double aspect = 9 / 16, // upright image width / height
+  }) {
     final now = DateTime.now().millisecondsSinceEpoch;
 
     final pts = [
@@ -106,6 +125,9 @@ class GuideChecker {
     var centerOk = false;
     var stillOk = false;
     var span = 0.0;
+    var facingOk = false;
+    var widthRatio = 0.0;
+    var leftOnImageLeft = false;
     var midX = 0.0;
     var midY = 0.0;
 
@@ -139,7 +161,20 @@ class GuideChecker {
       }
 
       span = hipMidY - shoulderMidY;
+      // Facing: how wide do the shoulders look compared with the torso
+      // height? A patient turned sideways looks narrow. Both are measured
+      // in the same units (x is multiplied by the image's width/height).
+      widthRatio = span > 0 ? ((s[0] - s[2]).abs() * aspect) / span : 0;
+      facingOk = widthRatio >= GuideRules.minWidthRatio;
+      leftOnImageLeft = s[0] < s[2];
       distanceOk = (span - GuideRules.spanTarget).abs() <= GuideRules.spanTol;
+
+      // Facing: how wide do the shoulders look compared with the torso
+      // height? A patient turned sideways looks narrow. Both are measured
+      // in the same units (x is multiplied by the image's width/height).
+      widthRatio = span > 0 ? ((s[0] - s[2]).abs() * aspect) / span : 0;
+      facingOk = widthRatio >= GuideRules.minWidthRatio;
+      leftOnImageLeft = s[0] < s[2];
 
       midY = (shoulderMidY + hipMidY) / 2;
       heightOk = (midY - GuideRules.midYTarget).abs() <= GuideRules.midYTol;
@@ -170,6 +205,7 @@ class GuideChecker {
     final allOk =
         personOk &&
         visibleOk &&
+        facingOk &&
         insideOk &&
         distanceOk &&
         heightOk &&
@@ -193,7 +229,9 @@ class GuideChecker {
     String hint;
     if (!personOk) {
       hint = "Point the phone at the patient's back";
-    } else if (!visibleOk) {
+    } else if (!facingOk) {
+      hint = 'Ask the patient to stand square to the camera, back facing you';
+    } else if (!distanceOk) {
       if (!shouldersVisible && !hipsVisible) {
         hint = 'Shoulders and hips are not clear';
       } else if (!shouldersVisible) {
@@ -201,6 +239,8 @@ class GuideChecker {
       } else {
         hint = 'Hips are not clear: step back so they fit';
       }
+    } else if (!facingOk) {
+      hint = 'Ask the patient to stand square to the camera, back facing you';
     } else if (!distanceOk) {
       hint = span < GuideRules.spanTarget ? 'Move closer' : 'Step back';
     } else if (!heightOk) {
@@ -227,18 +267,58 @@ class GuideChecker {
 
     return GuideStatus(
       items: [
-        CheckItem('Person', personOk),
+        CheckItem(
+          'Person',
+          personOk,
+          personOk ? null : 'The patient was not in view',
+        ),
         CheckItem('Visible', visibleOk),
-        CheckItem('Distance', distanceOk),
-        CheckItem('Height', heightOk),
-        CheckItem('Centered', centerOk && insideOk),
-        CheckItem('Level', tiltOk),
+        CheckItem(
+          'Facing',
+          facingOk,
+          !visibleOk || facingOk ? null : 'The patient was turned sideways',
+        ),
+        CheckItem(
+          'Distance',
+          distanceOk,
+          !visibleOk || distanceOk
+              ? null
+              : (span < GuideRules.spanTarget
+                    ? 'The patient was too far away'
+                    : 'The patient was too close'),
+        ),
+        CheckItem(
+          'Height',
+          heightOk,
+          !visibleOk || heightOk
+              ? null
+              : (midY < GuideRules.midYTarget
+                    ? 'The patient was too high in the frame'
+                    : 'The patient was too low in the frame'),
+        ),
+        CheckItem(
+          'Centered',
+          centerOk && insideOk,
+          !visibleOk || (centerOk && insideOk)
+              ? null
+              : (insideOk
+                    ? 'The patient was off-center'
+                    : 'The back was not fully inside the guide frame'),
+        ),
+        CheckItem(
+          'Level',
+          tiltOk,
+          tiltOk ? null : 'The phone was not held upright and level',
+        ),
         CheckItem('Still', stillOk),
       ],
       hint: hint,
       allOk: allOk,
       progress: progress,
       ready: ready,
+      widthRatio: widthRatio,
+      noseScore: frame.point(PoseIndex.nose)?.score ?? 0,
+      leftOnImageLeft: leftOnImageLeft,
     );
   }
 }

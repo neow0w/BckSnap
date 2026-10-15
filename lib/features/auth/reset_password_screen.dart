@@ -1,9 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/validators.dart';
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
 
+/// Fig 7: "Reset Password?" YES -> "Password reset email sent".
+/// Step 1 of 2: ask for the email. Step 2 is /reset/confirm.
+/// Works for every role (patient, receptionist, doctor).
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
 
@@ -12,6 +19,8 @@ class ResetPasswordScreen extends StatefulWidget {
 }
 
 class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
+  static const int _cooldownSeconds = 60;
+
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _auth = AuthService();
@@ -19,31 +28,58 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   bool _loading = false;
   bool _sent = false; // "Password reset email sent"
   String? _error;
+  String _sentTo = '';
+
+  Timer? _timer;
+  int _cooldown = 0; // seconds until "Resend" is allowed again
 
   @override
   void dispose() {
+    _timer?.cancel();
     _emailCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+  void _startCooldown() {
+    _timer?.cancel();
+    setState(() => _cooldown = _cooldownSeconds);
+    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _cooldown--);
+      if (_cooldown <= 0) t.cancel();
+    });
+  }
 
+  Future<void> _send({required String email}) async {
     setState(() {
       _loading = true;
       _error = null;
     });
-
     try {
-      await _auth.resetPassword(_emailCtrl.text.trim());
-      setState(() => _sent = true);
+      await _auth.resetPassword(email);
+      if (!mounted) return;
+      setState(() {
+        _sent = true;
+        _sentTo = email;
+      });
+      _startCooldown();
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (mounted) setState(() => _error = e.message);
     } catch (_) {
-      setState(() => _error = 'Something went wrong. Please try again.');
+      if (mounted) {
+        setState(() => _error = 'Something went wrong. Please try again.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _submit() {
+    if (!_formKey.currentState!.validate()) return;
+    _send(email: _emailCtrl.text.trim());
   }
 
   @override
@@ -67,9 +103,25 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     );
   }
 
+  Widget _errorBox() {
+    if (_error == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(_error!, style: const TextStyle(color: Colors.red)),
+      ),
+    );
+  }
+
   Widget _buildForm() {
     return Form(
       key: _formKey,
+      autovalidateMode: AutovalidateMode.onUserInteraction,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -80,32 +132,27 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Enter your email and we will send you a link to reset it.',
+            'Enter the email of your account and we will send you a code '
+            'to reset your password.',
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
           TextFormField(
             controller: _emailCtrl,
             keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            inputFormatters: [
+              FilteringTextInputFormatter.deny(RegExp(r'\s')),
+              LengthLimitingTextInputFormatter(254),
+            ],
             decoration: const InputDecoration(
               labelText: 'Email',
               border: OutlineInputBorder(),
             ),
-            validator: (v) => (v == null || v.trim().isEmpty)
-                ? 'Please enter your email'
-                : null,
+            validator: Validators.email,
+            onFieldSubmitted: (_) => _loading ? null : _submit(),
           ),
-          if (_error != null) ...[
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
-            ),
-          ],
+          _errorBox(),
           const SizedBox(height: 24),
           FilledButton(
             onPressed: _loading ? null : _submit,
@@ -115,7 +162,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     width: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Send reset email'),
+                : const Text('Send reset code'),
           ),
           const SizedBox(height: 12),
           TextButton(
@@ -140,14 +187,33 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'If an account exists for ${_emailCtrl.text.trim()}, '
-          'a reset link is on its way. Check your inbox and spam folder.',
+          'If an account exists for $_sentTo, a reset code is on its way. '
+          'Check your inbox and spam folder. The code expires after a short '
+          'time.',
           textAlign: TextAlign.center,
         ),
+        _errorBox(),
         const SizedBox(height: 24),
         FilledButton(
-          onPressed: () => context.go('/login'),
-          child: const Text('Back to login'),
+          onPressed: () => context.go('/reset/confirm', extra: _sentTo),
+          child: const Text('I have the code'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton(
+          onPressed: (_loading || _cooldown > 0)
+              ? null
+              : () => _send(email: _sentTo),
+          child: Text(
+            _cooldown > 0 ? 'Resend email (${_cooldown}s)' : 'Resend email',
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: () => setState(() {
+            _sent = false;
+            _error = null;
+          }),
+          child: const Text('Use a different email'),
         ),
       ],
     );
