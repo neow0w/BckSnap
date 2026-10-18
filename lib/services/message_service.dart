@@ -14,6 +14,22 @@ class MessageService {
     await _api.post('/messages', body: {'body': body});
   }
 
+  /// GET /messages/mine
+  /// Loads the patient's conversation with the clinic.
+  Future<List<ChatMessage>> getMyMessages() async {
+    final data = await _api.get('/messages/mine') as List;
+
+    final messages = [
+      for (final item in data)
+        ChatMessage.fromJson(
+          Map<String, dynamic>.from(item as Map),
+        ),
+    ];
+
+    messages.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    return messages;
+  }
+
   /// GET /messages/inbox
   Future<List<InboxItem>> inbox() async {
     final data = await _api.get('/messages/inbox') as List;
