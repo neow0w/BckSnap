@@ -12,21 +12,40 @@ class AuthService {
 
   final ApiClient _api = ApiClient.instance;
   AppUser? _user;
+  Map<String, dynamic>? _clinic;
 
   AppUser? get currentUser => _user;
+  Map<String, dynamic>? get currentClinic => _clinic;
+  bool get isClinicLoggedIn => _clinic != null;
 
   // A guest is anyone not logged in, or using a guest account.
   bool get isGuest => _user == null || _user!.isGuest;
 
   /// Runs once when the app starts: restores the saved login, if any.
+  
   Future<void> init() async {
     try {
       await _api.loadToken();
-      if (_api.hasToken) await _refresh();
+
+      if (!_api.hasToken) return;
+
+      if (_api.accountType == 'clinic') {
+        await _refreshClinic();
+      } else {
+        await _refresh();
+      }
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) {
+        await _api.clearToken();
+        _user = null;
+        _clinic = null;
+      }
+      // Keep the saved session if the server is temporarily unreachable.
     } catch (_) {
-      // Server unreachable at startup: the app still opens.
+      // The app can still open if startup restoration fails.
     }
   }
+
 
   Future<void> _refresh() async {
     try {
@@ -42,10 +61,35 @@ class AuthService {
     }
   }
 
+  Future<void> _refreshClinic() async {
+    try {
+      final data = await _api.get('/auth/clinic/me');
+      _clinic = Map<String, dynamic>.from(data as Map);
+      _user = null;
+    } on ApiException catch (e) {
+      if (e.statusCode == 401) {
+        await _api.clearToken();
+        _clinic = null;
+        _user = null;
+      } else {
+        rethrow;
+      }
+    }
+  }
+
+
   Future<void> _apply(dynamic data) async {
     final map = data as Map<String, dynamic>;
-    await _api.saveToken(map['access_token'] as String);
-    _user = AppUser.fromJson(map['user'] as Map<String, dynamic>);
+
+    await _api.saveToken(
+      map['access_token'] as String,
+      accountType: 'user',
+    );
+
+    _user = AppUser.fromJson(
+      map['user'] as Map<String, dynamic>,
+    );
+    _clinic = null;
   }
 
   // Fig 7: a new visitor screens as a guest (temporary account).
@@ -98,14 +142,42 @@ class AuthService {
   }
 
   // Fig 7: Login
-  Future<void> login({required String email, required String password}) async {
-    await _apply(
-      await _api.post(
-        '/auth/login',
-        body: {'email': email, 'password': password},
-      ),
+  
+
+Future<void> login({
+  required String email,
+  required String password,
+  bool isClinic = false,
+}) async {
+  final endpoint = isClinic ? '/auth/clinic/login' : '/auth/login';
+
+  final data = await _api.post(
+    endpoint,
+    body: {
+      'email': email,
+      'password': password,
+    },
+  );
+
+  final map = Map<String, dynamic>.from(data as Map);
+
+  await _api.saveToken(
+    map['access_token'] as String,
+    accountType: isClinic ? 'clinic' : 'user',
+  );
+
+  if (isClinic) {
+    _clinic = Map<String, dynamic>.from(map['clinic'] as Map);
+    _user = null;
+  } else {
+    _user = AppUser.fromJson(
+      Map<String, dynamic>.from(map['user'] as Map),
     );
+    _clinic = null;
   }
+}
+
+
 
   // Fig 7: Reset password, step 1 -> "Password reset email sent"
   Future<void> resetPassword(String email) async {
@@ -167,6 +239,7 @@ class AuthService {
   Future<void> logout() async {
     await _api.clearToken();
     _user = null;
+    _clinic = null;
   }
 
   // Fig 7: "Is the user an admin?"  Returns 'user', 'receptionist' or 'doctor'.

@@ -12,6 +12,7 @@ import '../features/landing/landing_screen.dart';
 import '../features/receptionist/inbox_screen.dart';
 import '../features/receptionist/patient_chat_screen.dart';
 import '../features/receptionist/staff_appointments_screen.dart';
+import '../features/receptionist/clinic_account_screen.dart';
 import '../features/screening/camera_capture_screen.dart';
 import '../features/screening/photo_screen.dart';
 import '../features/screening/result_screen.dart';
@@ -80,26 +81,61 @@ final GoRouter appRouter = GoRouter(
   // Runs before every navigation. AuthService is a singleton, so we read
   // the current user directly; screens still call context.go() after
   // login/logout, which triggers this check.
-  redirect: (context, state) {
-    final user = AuthService().currentUser;
-    final loggedIn = user != null && !user.isGuest;
-    final loc = state.matchedLocation;
-    final isProtected = _protected.any((p) => _under(loc, p));
 
-    // Not logged in (new visitor or guest): keep out of protected screens.
-    if (!loggedIn) return isProtected ? '/login' : null;
+redirect: (context, state) {
+  final auth = AuthService();
+  final user = auth.currentUser;
+  final isClinicLoggedIn = auth.isClinicLoggedIn;
+  final loggedIn = isClinicLoggedIn ||
+      (user != null && !user.isGuest);
+  final loc = state.matchedLocation;
 
-    // Logged in: skip landing/login/signup and go to the role's home.
-    if (_entryScreens.contains(loc)) return homeFor(user.role);
+  const clinicRoute = '/clinic-account';
+  final isClinicRoute = loc == clinicRoute;
 
-    // Logged in but on another role's screen: send them home.
-    if (isProtected && !_roleAllowed(user.role, loc)) {
-      return homeFor(user.role);
+  // Clinic accounts should use the Clinic Accounts screen.
+  if (isClinicLoggedIn) {
+    if (loc == '/login' || loc == '/') {
+      return clinicRoute;
     }
-    return null;
-  },
+    if (loc == clinicRoute) return null;
+
+    // Do not let clinic tokens access patient or staff screens.
+    return clinicRoute;
+  }
+
+  // Clinic Accounts is not available to patient or guest sessions.
+  // Clinic Accounts is not available to patient or guest sessions.
+  if (isClinicRoute) {
+    if (!loggedIn || user == null || user.isGuest) {
+      return '/login';
+    }
+    return homeFor(user.role);
+  }
+
+  final isProtected = _protected.any((p) => _under(loc, p));
+
+  if (!loggedIn) {
+    return isProtected ? '/login' : null;
+  }
+
+  if (_entryScreens.contains(loc)) {
+    return homeFor(user!.role);
+  }
+
+  if (isProtected && !_roleAllowed(user!.role, loc)) {
+    return homeFor(user.role);
+  }
+
+  return null;
+},
+
   routes: [
     // Figure 7: landing, login, sign-up, reset, screening
+    GoRoute(
+      path: '/clinic-account',
+      builder: (c, s) => const ClinicAccountScreen(),
+    ),
     GoRoute(path: '/', builder: (c, s) => const LandingScreen()),
     GoRoute(path: '/login', builder: (c, s) => const LoginScreen()),
     GoRoute(path: '/reset', builder: (c, s) => const ResetPasswordScreen()),
