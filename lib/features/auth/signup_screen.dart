@@ -1,84 +1,195 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/auth_destination.dart';
+import '../../core/format.dart';
+import '../../core/password_rules.dart';
+import '../../core/validators.dart';
+import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
+import 'privacy_notice.dart';
+
+/// Steps:  adults (18+)      details -> consent
+///         ages 9 to 17      details -> guardian consent -> minor assent
+enum _Step { details, consent, assent }
 
 class SignUpScreen extends StatefulWidget {
-  const SignUpScreen({super.key});
+  /// Where to go after sign-up (see authDestination). Null = /home.
+  final String? next;
+  const SignUpScreen({super.key, this.next});
 
   @override
   State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
-  final _formKey = GlobalKey<FormState>();
+  static const _relationships = ['Mother', 'Father', 'Legal guardian', 'Other'];
+
+  final _detailsKey = GlobalKey<FormState>();
+  final _guardianKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
+  final _dobCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+  final _guardianNameCtrl = TextEditingController();
+  final _guardianContactCtrl = TextEditingController();
   final _auth = AuthService();
 
-  bool _loading = false;
+  _Step _step = _Step.details;
+  DateTime? _dob;
+  String? _relationship;
   bool _hidePassword = true;
-  String? _error; // "Display respective error message"
+  bool _loading = false;
+  String? _error;
+
+  // Consent boxes. They are cleared if the age group changes.
+  bool? _consentForMinor;
+  bool _privacyRead = false;
+  bool _healthConsent = false;
+  bool _isGuardian = false;
+  bool _assent = false;
+
+  int? get _age =>
+      _dob == null ? null : Validators.ageOn(_dob!, DateTime.now());
+  bool get _isMinor => _age != null && _age! < Validators.adultAge;
+  int get _totalSteps => _isMinor ? 3 : 2;
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _emailCtrl.dispose();
+    _dobCtrl.dispose();
     _passwordCtrl.dispose();
     _confirmCtrl.dispose();
+    _guardianNameCtrl.dispose();
+    _guardianContactCtrl.dispose();
     super.dispose();
   }
 
-  String _friendlyError(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'email-already-in-use':
-      case 'credential-already-in-use':
-        return 'That email is already registered. Try logging in instead.';
-      case 'invalid-email':
-        return 'Please enter a valid email address.';
-      case 'weak-password':
-        return 'Password is too weak. Use at least 6 characters.';
-      case 'network-request-failed':
-        return 'No internet connection. Please try again.';
-      default:
-        return 'Sign-up failed (${e.code}). Please try again.';
+  // ---- navigation between steps -------------------------------------------
+
+  void _back() {
+    if (_loading) return;
+    switch (_step) {
+      case _Step.details:
+        context.go('/');
+      case _Step.consent:
+        setState(() {
+          _step = _Step.details;
+          _error = null;
+        });
+      case _Step.assent:
+        setState(() {
+          _step = _Step.consent;
+          _error = null;
+        });
     }
   }
 
+  Future<void> _pickDob() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dob ?? DateTime(now.year - 15, now.month, now.day),
+      firstDate: DateTime(now.year - 110),
+      lastDate: now,
+      helpText: 'Date of birth',
+      initialDatePickerMode: DatePickerMode.year,
+    );
+    if (picked == null) return;
+    setState(() {
+      _dob = picked;
+      _dobCtrl.text = formatDate(picked);
+    });
+  }
+
+  void _continueFromDetails() {
+    if (!_detailsKey.currentState!.validate()) return;
+    final minor = _isMinor;
+    setState(() {
+      _error = null;
+      if (_consentForMinor != minor) {
+        _privacyRead = false;
+        _healthConsent = false;
+        _isGuardian = false;
+        _assent = false;
+      }
+      _consentForMinor = minor;
+      _step = _Step.consent;
+    });
+  }
+
+  void _continueFromGuardian() {
+    if (!_guardianKey.currentState!.validate()) return;
+    if (!(_isGuardian && _privacyRead && _healthConsent)) {
+      setState(() => _error = 'Please tick all three boxes to continue.');
+      return;
+    }
+    setState(() {
+      _error = null;
+      _step = _Step.assent;
+    });
+  }
+
+  // ---- create the account ---------------------------------------------------
+
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    final minor = _isMinor;
+    final consentOk = minor
+        ? (_isGuardian && _privacyRead && _healthConsent && _assent)
+        : (_privacyRead && _healthConsent);
+    if (!consentOk || _dob == null) {
+      setState(() => _error = 'Consent is required to create an account.');
+      return;
+    }
 
     setState(() {
       _loading = true;
       _error = null;
     });
-
     try {
       await _auth.signUp(
         name: _nameCtrl.text.trim(),
         email: _emailCtrl.text.trim(),
         password: _passwordCtrl.text,
+        dateOfBirth: _dob!,
+        privacyVersion: PrivacyNotice.version,
+        guardianName: minor ? _guardianNameCtrl.text.trim() : null,
+        guardianRelationship: minor ? _relationship : null,
+        guardianContact: minor ? _guardianContactCtrl.text.trim() : null,
+        guardianConsent: minor,
+        minorAssent: minor,
       );
       if (!mounted) return;
-      context.go('/home'); // Sign-up successful -> connector A
-    } on FirebaseAuthException catch (e) {
-      setState(() => _error = _friendlyError(e));
+      context.go(authDestination(widget.next)); // Sign-up OK -> connector A
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        // Email already used / invalid data: let them fix it on step 1.
+        if (e.statusCode == 409 || e.statusCode == 422) {
+          _step = _Step.details;
+        }
+      });
     } catch (_) {
-      setState(() => _error = 'Something went wrong. Please try again.');
+      if (mounted) {
+        setState(() => _error = 'Something went wrong. Please try again.');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
+
+  // ---- UI -------------------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sign Up'),
-        leading: BackButton(onPressed: () => context.go('/')),
+        leading: BackButton(onPressed: _back),
       ),
       body: SafeArea(
         child: Center(
@@ -86,118 +197,409 @@ class _SignUpScreenState extends State<SignUpScreen> {
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text(
-                      'Create your account',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    TextFormField(
-                      controller: _nameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Full name',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Please enter your name'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Please enter your email';
-                        }
-                        if (!v.contains('@') || !v.contains('.')) {
-                          return 'Please enter a valid email';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _passwordCtrl,
-                      obscureText: _hidePassword,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        border: const OutlineInputBorder(),
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _hidePassword
-                                ? Icons.visibility
-                                : Icons.visibility_off,
-                          ),
-                          onPressed: () =>
-                              setState(() => _hidePassword = !_hidePassword),
-                        ),
-                      ),
-                      validator: (v) => (v == null || v.length < 6)
-                          ? 'Password must be at least 6 characters'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _confirmCtrl,
-                      obscureText: _hidePassword,
-                      decoration: const InputDecoration(
-                        labelText: 'Confirm password',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => v != _passwordCtrl.text
-                          ? 'Passwords do not match'
-                          : null,
-                    ),
-                    if (_error != null) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          _error!,
-                          style: const TextStyle(color: Colors.red),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    FilledButton(
-                      onPressed: _loading ? null : _submit,
-                      child: _loading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Sign Up'),
-                    ),
-                    const SizedBox(height: 12),
-                    TextButton(
-                      onPressed: () => context.go('/login'),
-                      child: const Text('Already have an account? Log in'),
-                    ),
-                  ],
-                ),
-              ),
+              child: switch (_step) {
+                _Step.details => _buildDetails(),
+                _Step.consent =>
+                  _isMinor ? _buildGuardianConsent() : _buildAdultConsent(),
+                _Step.assent => _buildAssent(),
+              },
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _header(int index, String title) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        'Step ${index + 1} of $_totalSteps',
+        style: const TextStyle(fontSize: 12),
+      ),
+      const SizedBox(height: 4),
+      LinearProgressIndicator(value: (index + 1) / _totalSteps),
+      const SizedBox(height: 16),
+      Text(
+        title,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 16),
+    ],
+  );
+
+  Widget _errorBox() {
+    if (_error == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(_error!, style: const TextStyle(color: Colors.red)),
+      ),
+    );
+  }
+
+  Widget _check(bool value, String text, ValueChanged<bool> onChanged) =>
+      CheckboxListTile(
+        value: value,
+        onChanged: (v) => setState(() => onChanged(v ?? false)),
+        title: Text(text, style: const TextStyle(fontSize: 14)),
+        controlAffinity: ListTileControlAffinity.leading,
+        contentPadding: EdgeInsets.zero,
+      );
+
+  Widget _noticeSummary() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Privacy notice (summary)',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          for (final line in PrivacyNotice.summary)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('• $line', style: const TextStyle(fontSize: 14)),
+            ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _fullNoticeLink() => Align(
+    alignment: Alignment.centerLeft,
+    child: TextButton.icon(
+      onPressed: () => context.push('/privacy'),
+      icon: const Icon(Icons.article_outlined),
+      label: const Text('Read the full Privacy Notice'),
+    ),
+  );
+
+  String? _dobHelper() {
+    final a = _age;
+    if (a == null) {
+      return 'Ages 9 to 17 need a parent or guardian\'s consent.';
+    }
+    if (a < Validators.minAge) return null; // the error text explains it
+    if (a < Validators.adultAge) {
+      return 'Age $a: a parent or guardian will give consent in the next step.';
+    }
+    return 'Age $a';
+  }
+
+  // ---- step 1: details ------------------------------------------------------
+
+  Widget _buildDetails() {
+    return Form(
+      key: _detailsKey,
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _header(0, 'Create your account'),
+          TextFormField(
+            controller: _nameCtrl,
+            textCapitalization: TextCapitalization.words,
+            autofillHints: const [AutofillHints.name],
+            inputFormatters: [LengthLimitingTextInputFormatter(60)],
+            decoration: const InputDecoration(
+              labelText: 'Full name',
+              border: OutlineInputBorder(),
+            ),
+            validator: (v) => Validators.name(v, label: 'full name'),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _emailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            inputFormatters: [
+              FilteringTextInputFormatter.deny(RegExp(r'\s')),
+              LengthLimitingTextInputFormatter(254),
+            ],
+            decoration: const InputDecoration(
+              labelText: 'Email',
+              border: OutlineInputBorder(),
+            ),
+            validator: Validators.email,
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _dobCtrl,
+            readOnly: true,
+            onTap: _pickDob,
+            decoration: InputDecoration(
+              labelText: 'Date of birth',
+              border: const OutlineInputBorder(),
+              suffixIcon: const Icon(Icons.calendar_today),
+              helperText: _dobHelper(),
+              helperMaxLines: 2,
+              errorText: _dob != null ? Validators.dateOfBirth(_dob) : null,
+            ),
+            validator: (_) => Validators.dateOfBirth(_dob),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _passwordCtrl,
+            obscureText: _hidePassword,
+            autofillHints: const [AutofillHints.newPassword],
+            onChanged: (_) => setState(() {}),
+            inputFormatters: [LengthLimitingTextInputFormatter(64)],
+            decoration: InputDecoration(
+              labelText: 'Password',
+              border: const OutlineInputBorder(),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _hidePassword ? Icons.visibility : Icons.visibility_off,
+                ),
+                onPressed: () => setState(() => _hidePassword = !_hidePassword),
+              ),
+            ),
+            validator: Validators.password,
+          ),
+          PasswordRules(password: _passwordCtrl.text),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _confirmCtrl,
+            obscureText: _hidePassword,
+            decoration: const InputDecoration(
+              labelText: 'Confirm password',
+              border: OutlineInputBorder(),
+            ),
+            validator: (v) => Validators.confirmPassword(v, _passwordCtrl.text),
+          ),
+          _errorBox(),
+          const SizedBox(height: 24),
+          FilledButton(
+            onPressed: _continueFromDetails,
+            child: const Text('Continue'),
+          ),
+          const SizedBox(height: 12),
+          TextButton(
+            onPressed: () => context.go('/login'),
+            child: const Text('Already have an account? Log in'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---- step 2 (adults): privacy notice and consent --------------------------
+
+  Widget _buildAdultConsent() {
+    final ok = _privacyRead && _healthConsent;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _header(1, 'Privacy notice and consent'),
+        _noticeSummary(),
+        _fullNoticeLink(),
+        const SizedBox(height: 8),
+        _check(
+          _privacyRead,
+          'I have read and understood the Privacy Notice.',
+          (v) => _privacyRead = v,
+        ),
+        _check(
+          _healthConsent,
+          'I consent to the collection and use of my health-related '
+          'information (back photo and screening results) for screening and '
+          'clinic referral, as described in the Privacy Notice.',
+          (v) => _healthConsent = v,
+        ),
+        _errorBox(),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: (ok && !_loading) ? _submit : null,
+          child: _loading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Create account'),
+        ),
+      ],
+    );
+  }
+
+  // ---- step 2 (ages 9-17): guardian consent --------------------------------
+
+  Widget _buildGuardianConsent() {
+    final child = _nameCtrl.text.trim().isEmpty
+        ? 'the child'
+        : _nameCtrl.text.trim();
+    return Form(
+      key: _guardianKey,
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _header(1, 'Parent or guardian consent'),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '$child is under 18. A parent or legal guardian must read '
+              'this page and give consent. Please hand the device to them.',
+            ),
+          ),
+          const SizedBox(height: 16),
+          _noticeSummary(),
+          _fullNoticeLink(),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: _guardianNameCtrl,
+            textCapitalization: TextCapitalization.words,
+            inputFormatters: [LengthLimitingTextInputFormatter(60)],
+            decoration: const InputDecoration(
+              labelText: 'Guardian full name',
+              border: OutlineInputBorder(),
+            ),
+            validator: (v) => Validators.name(v, label: 'full name'),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            initialValue: _relationship,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: 'Relationship to the child',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              for (final r in _relationships)
+                DropdownMenuItem(value: r, child: Text(r)),
+            ],
+            onChanged: (v) => setState(() => _relationship = v),
+            validator: (v) => v == null ? 'Please choose a relationship' : null,
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _guardianContactCtrl,
+            keyboardType: TextInputType.emailAddress,
+            inputFormatters: [LengthLimitingTextInputFormatter(254)],
+            decoration: const InputDecoration(
+              labelText: 'Guardian email or phone number',
+              border: OutlineInputBorder(),
+            ),
+            validator: (v) {
+              final e = Validators.emailOrPhone(v);
+              if (e != null) return e;
+              if ((v ?? '').trim().toLowerCase() ==
+                  _emailCtrl.text.trim().toLowerCase()) {
+                return 'Use the guardian\'s own contact, not the account email';
+              }
+              return null;
+            },
+          ),
+          const SizedBox(height: 8),
+          _check(
+            _isGuardian,
+            'I am the parent or legal guardian of $child.',
+            (v) => _isGuardian = v,
+          ),
+          _check(
+            _privacyRead,
+            'I have read and understood the Privacy Notice.',
+            (v) => _privacyRead = v,
+          ),
+          _check(
+            _healthConsent,
+            'I consent to the collection and use of $child\'s '
+            'health-related information (back photo and screening results) '
+            'for screening and clinic referral, as described in the Privacy '
+            'Notice.',
+            (v) => _healthConsent = v,
+          ),
+          _errorBox(),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: _continueFromGuardian,
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---- step 3 (ages 9-17): the young person's own agreement -----------------
+
+  Widget _buildAssent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _header(2, 'Your agreement'),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'Hi there!',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                SizedBox(height: 8),
+                Text('This app helps check your back for scoliosis.'),
+                SizedBox(height: 8),
+                Text(
+                  '• You take a photo of your back and measure a bend '
+                  'with your phone.',
+                ),
+                SizedBox(height: 4),
+                Text(
+                  '• We keep your photo and results safe. Only you, your '
+                  'parent or guardian, and the clinic staff who look after '
+                  'you can see them.',
+                ),
+                SizedBox(height: 4),
+                Text(
+                  '• If the result looks unusual, you can ask a clinic to '
+                  'take a look.',
+                ),
+                SizedBox(height: 4),
+                Text('• This is a check, not a diagnosis. A doctor decides.'),
+                SizedBox(height: 4),
+                Text('• You can say no, ask questions, or stop at any time.'),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        _check(
+          _assent,
+          'I understand, and I agree to take part.',
+          (v) => _assent = v,
+        ),
+        _errorBox(),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: (_assent && !_loading) ? _submit : null,
+          child: _loading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Create account'),
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton(
+          onPressed: _loading ? null : () => context.go('/'),
+          child: const Text("I don't want to join"),
+        ),
+      ],
     );
   }
 }
