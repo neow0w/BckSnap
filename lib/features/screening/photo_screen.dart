@@ -1,9 +1,11 @@
-import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+
+import '../../services/auth_service.dart';
+import '../../services/screening_draft.dart';
 
 class PhotoScreen extends StatefulWidget {
   const PhotoScreen({super.key});
@@ -14,23 +16,36 @@ class PhotoScreen extends StatefulWidget {
 
 class _PhotoScreenState extends State<PhotoScreen> {
   final ImagePicker _picker = ImagePicker();
-  XFile? _photo;
+  Uint8List? _photoBytes;
+  String? _photoName;
+
+  @override
+  void initState() {
+    super.initState();
+    // Make sure there is a session (guest or logged in) before screening.
+    // Does nothing if the user is already signed in.
+    AuthService().signInAsGuest().catchError((_) {});
+  }
 
   Future<void> _pick(ImageSource source) async {
     final XFile? picked = await _picker.pickImage(
       source: source,
-      imageQuality: 90,
+      imageQuality: 85,
+      maxWidth: 1600, // keeps the upload small
     );
-    if (picked != null) {
-      setState(() => _photo = picked);
-    }
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _photoBytes = bytes;
+      _photoName = picked.name;
+    });
   }
 
-  Widget _preview() {
-    if (kIsWeb) {
-      return Image.network(_photo!.path, fit: BoxFit.contain);
-    }
-    return Image.file(File(_photo!.path), fit: BoxFit.contain);
+  void _continue() {
+    ScreeningDraft.photoBytes = _photoBytes;
+    ScreeningDraft.photoName = _photoName;
+    context.go('/screening/test');
   }
 
   @override
@@ -43,7 +58,7 @@ class _PhotoScreenState extends State<PhotoScreen> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: _photo == null ? _buildGuidelines() : _buildReview(),
+          child: _photoBytes == null ? _buildGuidelines() : _buildReview(),
         ),
       ),
     );
@@ -105,15 +120,15 @@ class _PhotoScreenState extends State<PhotoScreen> {
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 12),
-        Expanded(child: _preview()),
+        Expanded(child: Image.memory(_photoBytes!, fit: BoxFit.contain)),
         const SizedBox(height: 12),
-        FilledButton(
-          onPressed: () => context.go('/screening/test'),
-          child: const Text('Yes, continue'),
-        ),
+        FilledButton(onPressed: _continue, child: const Text('Yes, continue')),
         const SizedBox(height: 12),
         OutlinedButton(
-          onPressed: () => setState(() => _photo = null),
+          onPressed: () => setState(() {
+            _photoBytes = null;
+            _photoName = null;
+          }),
           child: const Text('No, retake'),
         ),
       ],

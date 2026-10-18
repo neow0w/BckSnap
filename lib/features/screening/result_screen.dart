@@ -7,19 +7,17 @@ class ResultScreen extends StatelessWidget {
   final double angle;
   const ResultScreen({super.key, required this.angle});
 
-  // Referral threshold in degrees (angle of trunk rotation).
-  // Confirm this value with your adviser or clinical references.
+  // Display threshold in degrees (angle of trunk rotation).
+  // Keep it equal to scoliosis_threshold in the API's config.py (7.0).
+  // The server makes the official decision that gets saved.
   static const double threshold = 7.0;
-
-  // "Did the user use the app as a guest?" (real login state)
-  bool get isGuest => AuthService().isGuest;
 
   bool get hasScoliosis => angle >= threshold;
 
   // "Did the user use the app as a guest?"
   // YES -> Sign up, NO -> User Home (connector A)
   void _goToReferral(BuildContext context) {
-    context.go(isGuest ? '/signup' : '/home');
+    context.go(AuthService().isGuest ? '/signup' : '/home');
   }
 
   @override
@@ -38,7 +36,7 @@ class ResultScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Card(
-                color: color.withOpacity(0.15),
+                color: color.withValues(alpha: 0.15),
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(

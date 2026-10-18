@@ -1,7 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -19,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _loading = false;
   bool _hidePassword = true;
+  bool _isClinicLogin = false;
   String? _error;
 
   @override
@@ -28,22 +29,6 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  String _friendlyError(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'invalid-credential':
-      case 'wrong-password':
-      case 'user-not-found':
-        return 'Incorrect email or password.';
-      case 'invalid-email':
-        return 'Please enter a valid email address.';
-      case 'too-many-requests':
-        return 'Too many attempts. Please wait a moment and try again.';
-      case 'network-request-failed':
-        return 'No internet connection. Please try again.';
-      default:
-        return 'Login failed (${e.code}). Please try again.';
-    }
-  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -57,27 +42,46 @@ class _LoginScreenState extends State<LoginScreen> {
       await _auth.login(
         email: _emailCtrl.text.trim(),
         password: _passwordCtrl.text,
+        isClinic: _isClinicLogin,
       );
 
-      // "Is the user an admin?"
+      if (!mounted) return;
+
+    // Clinic accounts use a separate navigation path.
+      if (_isClinicLogin) {
+        context.go('/clinic-account');
+        return;
+      }
+
+    // Existing patient and staff login flow.
       final role = await _auth.getRole();
+
       if (!mounted) return;
 
       if (role == 'receptionist') {
-        context.go('/reception'); // connector B
+        context.go('/reception');
       } else if (role == 'doctor') {
-        context.go('/doctor'); // connector C
+        context.go('/doctor');
       } else {
-        context.go('/home'); // connector A
+        context.go('/home');
       }
-    } on FirebaseAuthException catch (e) {
-      setState(() => _error = _friendlyError(e));
+    } on ApiException catch (e) {
+        if (mounted) {
+          setState(() => _error = e.message);
+      }
     } catch (_) {
-      setState(() => _error = 'Something went wrong. Please try again.');
+      if (mounted) {
+        setState(
+          () => _error = 'Something went wrong. Please try again.',
+        );
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -106,6 +110,30 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
+                    SegmentedButton<bool>(
+                      segments: const [
+                        ButtonSegment<bool>(
+                          value: false,
+                          label: Text('Patient'),
+                          icon: Icon(Icons.person_outline),
+                        ),
+                        ButtonSegment<bool>(
+                          value: true,
+                          label: Text('Clinic'),
+                          icon: Icon(Icons.local_hospital_outlined),
+                        ),
+                      ],
+                      selected: {_isClinicLogin},
+                      onSelectionChanged: (selection) {
+                        setState(() {
+                          _isClinicLogin = selection.first;
+                          _error = null;
+                        });
+                      },
+                      expandedInsets: EdgeInsets.zero,
+                    ),
+                    const SizedBox(height: 20),
+
                     TextFormField(
                       controller: _emailCtrl,
                       keyboardType: TextInputType.emailAddress,
@@ -149,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.red.withOpacity(0.1),
+                          color: Colors.red.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(

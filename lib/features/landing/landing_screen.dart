@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../services/auth_service.dart';
-
 class LandingScreen extends StatelessWidget {
   const LandingScreen({super.key});
 
@@ -30,14 +28,14 @@ class LandingScreen extends StatelessWidget {
               ),
               const SizedBox(height: 40),
               FilledButton(
-                onPressed: () async {
-                  await AuthService().signInAsGuest();
-                  if (context.mounted) context.go('/screening/photo');
-                },
+                // NO: not an existing user. The guest session is created
+                // on the photo screen.
+                onPressed: () => context.go('/screening/photo'),
                 child: const Text('Start Screening'),
               ),
               const SizedBox(height: 12),
               OutlinedButton(
+                // YES: existing user
                 onPressed: () => context.go('/login'),
                 child: const Text('I already have an account'),
               ),
