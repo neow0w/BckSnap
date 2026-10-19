@@ -19,7 +19,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _loading = false;
   bool _hidePassword = true;
-  bool _isClinicLogin = false;
   String? _error;
 
   @override
@@ -30,57 +29,56 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+Future<void> _submit() async {
+  if (!_formKey.currentState!.validate()) return;
 
-    try {
-      await _auth.login(
-        email: _emailCtrl.text.trim(),
-        password: _passwordCtrl.text,
-        isClinic: _isClinicLogin,
+  setState(() {
+    _loading = true;
+    _error = null;
+  });
+
+  try {
+    await _auth.login(
+      email: _emailCtrl.text.trim(),
+      password: _passwordCtrl.text,
+    );
+
+    if (!mounted) return;
+
+    if (_auth.isClinicLoggedIn) {
+      context.go('/clinic-account');
+      return;
+    }
+
+    final role = await _auth.getRole();
+
+    if (!mounted) return;
+
+    if (role == 'receptionist') {
+      context.go('/reception');
+    } else if (role == 'doctor') {
+      context.go('/doctor');
+    } else {
+      context.go('/home');
+    }
+  } on ApiException catch (e) {
+    if (mounted) {
+      setState(() => _error = e.message);
+    }
+  } catch (_) {
+    if (mounted) {
+      setState(
+        () => _error = 'Something went wrong. Please try again.',
       );
-
-      if (!mounted) return;
-
-    // Clinic accounts use a separate navigation path.
-      if (_isClinicLogin) {
-        context.go('/clinic-account');
-        return;
-      }
-
-    // Existing patient and staff login flow.
-      final role = await _auth.getRole();
-
-      if (!mounted) return;
-
-      if (role == 'receptionist') {
-        context.go('/reception');
-      } else if (role == 'doctor') {
-        context.go('/doctor');
-      } else {
-        context.go('/home');
-      }
-    } on ApiException catch (e) {
-        if (mounted) {
-          setState(() => _error = e.message);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => _error = 'Something went wrong. Please try again.',
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
+    }
+  } finally {
+    if (mounted) {
+      setState(() => _loading = false);
     }
   }
+}
+
 
 
   @override
@@ -110,29 +108,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    SegmentedButton<bool>(
-                      segments: const [
-                        ButtonSegment<bool>(
-                          value: false,
-                          label: Text('Patient'),
-                          icon: Icon(Icons.person_outline),
-                        ),
-                        ButtonSegment<bool>(
-                          value: true,
-                          label: Text('Clinic'),
-                          icon: Icon(Icons.local_hospital_outlined),
-                        ),
-                      ],
-                      selected: {_isClinicLogin},
-                      onSelectionChanged: (selection) {
-                        setState(() {
-                          _isClinicLogin = selection.first;
-                          _error = null;
-                        });
-                      },
-                      expandedInsets: EdgeInsets.zero,
-                    ),
-                    const SizedBox(height: 20),
 
                     TextFormField(
                       controller: _emailCtrl,

@@ -19,121 +19,477 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
   bool _loading = false;
   String? _error;
 
-  Future<void> _openProfile({
-    required String title,
-    required String expectedRole,
-  }) async {
+  
+  Future<void> _openAddProfile() async {
+    final formKey = GlobalKey<FormState>();
+    final firstNameController = TextEditingController();
+    final lastNameController = TextEditingController();
     final emailController = TextEditingController();
     final passwordController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
+    final professionController = TextEditingController();
 
-    final credentials = await showDialog<List<String>>(
+    String role = 'doctor';
+    DateTime? dateOfBirth;
+    final selectedProfessions = <String>{};
+    String? formError;
+    bool saving = false;
+
+    final result = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('$title Login'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Staff email',
-                  border: OutlineInputBorder(),
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final age = dateOfBirth == null
+                ? null
+                : DateTime.now().year -
+                    dateOfBirth!.year -
+                    (DateTime.now().month < dateOfBirth!.month ||
+                            (DateTime.now().month == dateOfBirth!.month &&
+                                DateTime.now().day < dateOfBirth!.day)
+                        ? 1
+                        : 0);
+
+            return AlertDialog(
+              title: const Text('Add Staff Profile'),
+              content: SizedBox(
+                width: 420,
+                child: SingleChildScrollView(
+                  child: Form(
+                    key: formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        DropdownButtonFormField<String>(
+                          initialValue: role,
+                          decoration: const InputDecoration(
+                            labelText: 'Account role',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'doctor',
+                              child: Text('Doctor'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'receptionist',
+                              child: Text('Receptionist'),
+                            ),
+                          ],
+                          onChanged: saving
+                              ? null
+                              : (value) {
+                                  if (value == null) return;
+                                  setDialogState(() {
+                                    role = value;
+                                    selectedProfessions.clear();
+                                  });
+                                },
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: firstNameController,
+                          decoration: const InputDecoration(
+                            labelText: 'First name',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) =>
+                              value == null || value.trim().isEmpty
+                                  ? 'Enter first name'
+                                  : null,
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: lastNameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Last name',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) =>
+                              value == null || value.trim().isEmpty
+                                  ? 'Enter last name'
+                                  : null,
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: saving
+                              ? null
+                              : () async {
+                                  final today = DateTime.now();
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: DateTime(
+                                      today.year - 25,
+                                      today.month,
+                                      today.day,
+                                    ),
+                                    firstDate: DateTime(1900),
+                                    lastDate: today,
+                                  );
+                                  if (picked != null) {
+                                    setDialogState(() {
+                                      dateOfBirth = picked;
+                                    });
+                                  }
+                                },
+                          icon: const Icon(Icons.calendar_month),
+                          label: Text(
+                            dateOfBirth == null
+                                ? 'Select date of birth'
+                                : '${dateOfBirth!.month.toString().padLeft(2, '0')}/'
+                                  '${dateOfBirth!.day.toString().padLeft(2, '0')}/'
+                                  '${dateOfBirth!.year}'
+                                  ' — Age: $age',
+                          ),
+                        ),
+
+                        if (role == 'doctor') ...[
+                          const SizedBox(height: 12),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Profession(s)',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: professionController,
+                            decoration: const InputDecoration(
+                              labelText: 'Enter a profession',
+                              hintText: 'e.g. Physical Therapist',
+                              border: OutlineInputBorder(),
+                            ),
+                            onFieldSubmitted: (value) {
+                              final profession = value.trim();
+                              if (profession.isEmpty) return;
+
+                              setDialogState(() {
+                                selectedProfessions.add(profession);
+                                professionController.clear();
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: OutlinedButton.icon(
+                              onPressed: saving
+                                  ? null
+                                  : () {
+                                      final profession =
+                                          professionController.text.trim();
+
+                                      if (profession.isEmpty) return;
+
+                                      setDialogState(() {
+                                        selectedProfessions.add(profession);
+                                        professionController.clear();
+                                      });
+                                    },
+                              icon: const Icon(Icons.add),
+                              label: const Text('Add Profession'),
+                            ),
+                          ),
+                          if (selectedProfessions.isNotEmpty)
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: selectedProfessions.map((profession) {
+                                return InputChip(
+                                  label: Text(profession),
+                                  onDeleted: saving
+                                      ? null
+                                      : () {
+                                          setDialogState(() {
+                                            selectedProfessions
+                                                .remove(profession);
+                                          });
+                                        },
+                                );
+                              }).toList(),
+                            ),
+                        ],
+
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: emailController,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            labelText: 'Email',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Enter email';
+                            }
+                            if (!value.contains('@') ||
+                                !value.contains('.')) {
+                              return 'Enter a valid email';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: passwordController,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Password (minimum 8 characters)',
+                            border: OutlineInputBorder(),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.length < 8) {
+                              return 'Use at least 8 characters';
+                            }
+                            return null;
+                          },
+                        ),
+                        if (formError != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            formError!,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) =>
-                    value == null || value.trim().isEmpty
-                        ? 'Enter the staff email'
-                        : null,
               ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(),
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () => Navigator.pop(dialogContext, false),
+                  child: const Text('Cancel'),
                 ),
-                validator: (value) =>
-                    value == null || value.isEmpty
-                        ? 'Enter the password'
-                        : null,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(dialogContext, [
-                  emailController.text.trim(),
-                  passwordController.text,
-                ]);
-              }
-            },
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
+                FilledButton(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+
+                          if (dateOfBirth == null) {
+                            setDialogState(() {
+                              formError = 'Please select a date of birth.';
+                            });
+                            return;
+                          }
+
+                          if (role == 'doctor' &&
+                              selectedProfessions.isEmpty) {
+                            setDialogState(() {
+                              formError =
+                                  'Select at least one doctor profession.';
+                            });
+                            return;
+                          }
+
+                          setDialogState(() {
+                            saving = true;
+                            formError = null;
+                          });
+
+                          try {
+                            await _auth.createManagedStaff(
+                              firstName: firstNameController.text,
+                              lastName: lastNameController.text,
+                              dateOfBirth: dateOfBirth!,
+                              professions: role == 'doctor'
+                                  ? selectedProfessions.toList()
+                                  : [],
+                              email: emailController.text,
+                              password: passwordController.text,
+                              role: role,
+                            );
+
+                            if (!dialogContext.mounted) return;
+                            Navigator.of(dialogContext, rootNavigator: true).pop(true);
+                            
+                          } on ApiException catch (e) {
+                            setDialogState(() {
+                              saving = false;
+                              formError = e.message;
+                            });
+                          } catch (_) {
+                            setDialogState(() {
+                              saving = false;
+                              formError =
+                                  'Could not create the profile. Please try again.';
+                            });
+                          }
+                        },
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Create Profile'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
 
+    firstNameController.dispose();
+    lastNameController.dispose();
     emailController.dispose();
     passwordController.dispose();
 
-    if (credentials == null || !mounted) return;
-
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-
-    try {
-      await _auth.login(
-        email: credentials[0],
-        password: credentials[1],
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            role == 'doctor'
+                ? 'Doctor application submitted for receptionist approval.'
+                : 'Receptionist profile created.',
+          ),
+        ),
       );
+    }
+  }
 
-      final role = await _auth.getRole();
+
+
+Future<void> _openProfile({
+  required String title,
+  required String expectedRole,
+}) async {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final formKey = GlobalKey<FormState>();
+
+  List<String>? credentials;
+
+
+  credentials = await showDialog<List<String>>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text('$title Login'),
+      content: Form(
+        key: formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: emailController,
+              decoration: const InputDecoration(
+                labelText: 'Staff email',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.emailAddress,
+              validator: (value) =>
+                  value == null || value.trim().isEmpty
+                      ? 'Enter the staff email'
+                      : null,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: passwordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+              ),
+              validator: (value) =>
+                  value == null || value.isEmpty
+                      ? 'Enter the password'
+                      : null,
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (formKey.currentState!.validate()) {
+              Navigator.of(dialogContext).pop([
+                emailController.text.trim(),
+                passwordController.text,
+              ]);
+            }
+          },
+          child: const Text('Continue'),
+        ),
+      ],
+    ),
+  );
+
+  await Future<void>.delayed(
+    const Duration(milliseconds: 300),
+  );
+
+  emailController.dispose();
+  passwordController.dispose();
+
+
+  // Cancel closes the dialog without attempting login.
+  if (credentials == null || !mounted) return;
+
+  setState(() {
+    _loading = true;
+    _error = null;
+  });
+
+  var navigated = false;
+
+  try {
+    await _auth.login(
+      email: credentials[0],
+      password: credentials[1],
+    );
+
+    final role = await _auth.getRole();
+
+    if (!mounted) return;
+
+    if (role != expectedRole) {
+      await _auth.logout();
 
       if (!mounted) return;
 
-      if (role != expectedRole) {
-        await _auth.logout();
+      setState(() {
+        _error = expectedRole == 'receptionist'
+            ? 'Please use a receptionist account.'
+            : 'Please use a doctor account.';
+      });
+      return;
+    }
 
-        if (mounted) {
-          setState(() {
-            _error = expectedRole == 'receptionist'
-                ? 'Please use a receptionist account.'
-                : 'Please use a doctor account.';
-          });
-        }
-        return;
-      }
+    navigated = true;
 
-      if (role == 'receptionist') {
-        context.go('/reception');
-      } else if (role == 'doctor') {
-        context.go('/doctor');
-      }
-    } on ApiException catch (e) {
-      if (mounted) setState(() => _error = e.message);
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _error = 'Unable to sign in. Please try again.';
-        });
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
+    if (role == 'receptionist') {
+      context.go('/reception');
+    } else if (role == 'doctor') {
+      context.go('/doctor');
+    }
+  } on ApiException catch (e) {
+    if (mounted) {
+      setState(() => _error = e.message);
+    }
+  } catch (_) {
+    if (mounted) {
+      setState(() {
+        _error = 'Unable to sign in. Please try again.';
+      });
+    }
+  } finally {
+    if (mounted && !navigated) {
+      setState(() => _loading = false);
     }
   }
+}
+
 
   Widget _profileCard({
     required IconData icon,
@@ -231,15 +587,7 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
                 ),
               ),
               OutlinedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Staff profile creation will be connected next.',
-                      ),
-                    ),
-                  );
-                },
+                onPressed: _loading ? null : _openAddProfile,
                 icon: const Icon(Icons.person_add_alt_1),
                 label: const Text('Add Profile'),
               ),

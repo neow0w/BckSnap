@@ -19,6 +19,7 @@ class AppointmentService {
 
   /// POST /appointments
   Future<void> book({
+    required int clinicId,
     required DateTime when,
     required bool online,
     String? notes,
@@ -26,6 +27,7 @@ class AppointmentService {
     await _api.post(
       '/appointments',
       body: {
+        'clinic_id': clinicId,
         'scheduled_at': when.toUtc().toIso8601String(),
         'mode': online ? 'online' : 'physical',
         if (notes != null && notes.isNotEmpty) 'notes': notes,
