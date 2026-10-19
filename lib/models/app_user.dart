@@ -2,6 +2,7 @@ import '../core/validators.dart';
 
 class AppUser {
   final int id;
+  final int? clinicId;
   final String? name;
   final String? email;
   final String role; // user / receptionist / doctor
@@ -19,6 +20,7 @@ class AppUser {
     required this.email,
     required this.role,
     required this.isGuest,
+    this.clinicId,
     this.phone,
     this.dateOfBirth,
     this.address,
@@ -42,6 +44,7 @@ class AppUser {
     final dob = json['date_of_birth'];
     return AppUser(
       id: json['id'] as int,
+      clinicId: json['clinic_id'] as int?,
       name: json['name'] as String?,
       email: json['email'] as String?,
       role: json['role'] as String,

@@ -298,6 +298,15 @@ class _ClinicDetailsScreenState extends State<ClinicDetailsScreen> {
                       ),
                     ],
                     const SizedBox(height: 20),
+
+                    OutlinedButton.icon(
+                      onPressed: () => context.push('/message/${clinic.id}'),
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      label: const Text('Chat with Clinic'),
+                    ),
+                    
+                    const SizedBox(height: 12),
+
                     FilledButton.icon(
                       onPressed:
                           clinic.doctors.isEmpty ||

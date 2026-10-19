@@ -9,10 +9,13 @@ import '../../services/message_service.dart';
 /// Also used by "Contact patient for physical visit" in Figure 9.
 class PatientChatScreen extends StatefulWidget {
   final int patientId;
+  final int clinicId;
   final String? patientName;
+
   const PatientChatScreen({
     super.key,
     required this.patientId,
+    required this.clinicId,
     this.patientName,
   });
 
@@ -49,7 +52,10 @@ class _PatientChatScreenState extends State<PatientChatScreen> {
       _error = null;
     });
     try {
-      final list = await _service.thread(widget.patientId);
+      final list = await _service.thread(
+        widget.patientId,
+        widget.clinicId,
+      );
       if (!mounted) return;
       setState(() => _messages = list);
       _scrollToEnd();
@@ -75,9 +81,13 @@ class _PatientChatScreenState extends State<PatientChatScreen> {
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
     try {
-      await _service.reply(widget.patientId, text);
+      await _service.reply(
+        widget.patientId,
+        widget.clinicId,
+        text,
+      );
       _inputCtrl.clear();
-      final list = await _service.thread(widget.patientId);
+      final list = await _service.thread(widget.patientId, widget.clinicId);
       if (!mounted) return;
       setState(() => _messages = list);
       _scrollToEnd();

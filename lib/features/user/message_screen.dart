@@ -7,7 +7,12 @@ import '../../services/message_service.dart';
 import '../../models/message.dart';
 
 class MessageScreen extends StatefulWidget {
-  const MessageScreen({super.key});
+  final int clinicId;
+
+  const MessageScreen({
+    super.key,
+    required this.clinicId,
+  });
 
   @override
   State<MessageScreen> createState() => _MessageScreenState();
@@ -38,7 +43,7 @@ class _MessageScreenState extends State<MessageScreen> {
 
   Future<void> _loadMessages() async {
     try {
-      final messages = await _service.getMyMessages();
+      final messages = await _service.getMyMessages(widget.clinicId);
 
       if (!mounted) return;
 
@@ -73,7 +78,7 @@ class _MessageScreenState extends State<MessageScreen> {
     });
 
     try {
-      await _service.sendMessage(body);
+      await _service.sendMessage(widget.clinicId, body);
 
       if (!mounted) return;
 

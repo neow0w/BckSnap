@@ -73,9 +73,9 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
-                onPressed: () => context.push('/message'),
+                onPressed: () => context.push('/clinics'),
                 icon: const Icon(Icons.chat_bubble_outline),
-                label: const Text('Message the clinic'),
+                label: const Text('Message a clinic'),
               ),
               const SizedBox(height: 12),
               if (user == null || user.isGuest)

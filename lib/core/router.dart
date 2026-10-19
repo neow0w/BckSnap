@@ -198,7 +198,12 @@ redirect: (context, state) {
       path: '/notifications',
       builder: (c, s) => const NotificationsScreen(),
     ),
-    GoRoute(path: '/message', builder: (c, s) => const MessageScreen()),
+    GoRoute(
+      path: '/message/:clinicId',
+      builder: (c, s) => MessageScreen(
+        clinicId: int.parse(s.pathParameters['clinicId']!),
+      ),
+    ),
 
     // Figure 9: receptionist (connector B)
     GoRoute(
@@ -206,13 +211,31 @@ redirect: (context, state) {
       builder: (c, s) => const StaffAppointmentsScreen(isReception: true),
     ),
     GoRoute(path: '/reception/inbox', builder: (c, s) => const InboxScreen()),
-    GoRoute(
-      path: '/reception/chat/:patientId',
-      builder: (c, s) => PatientChatScreen(
+    
+  
+  
+  GoRoute(
+    path: '/reception/chat/:patientId',
+    builder: (c, s) {
+      final auth = AuthService();
+      final clinicId = auth.currentUser?.clinicId;
+
+      if (clinicId == null) {
+        throw StateError(
+          'The logged-in receptionist has no clinic assigned.',
+        );
+      }
+
+      return PatientChatScreen(
         patientId: _id(s, 'patientId'),
+        clinicId: clinicId,
         patientName: s.extra is String ? s.extra as String : null,
-      ),
-    ),
+      );
+    },
+  ),
+
+
+
 
     // Figure 10: doctor (connector C)
     GoRoute(
