@@ -465,9 +465,10 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
 
   Color _guideColor(GuideStatus? st) {
     if (st == null) return Colors.white;
-    if (st.ready) return Colors.greenAccent;
-    if (st.allOk) return Colors.amberAccent;
-    return Colors.white;
+    final positionOk = st.items
+        .where((i) => i.label != 'Still')
+        .every((i) => i.ok);
+    return positionOk ? Colors.greenAccent : Colors.white;
   }
 
   Widget _buildPreview() {

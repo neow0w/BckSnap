@@ -33,6 +33,14 @@ class ResultData {
 
   factory ResultData.fromAtr(double atr) => ResultData(highestAtr: atr);
 
+  Map<String, dynamic> toJson() => {
+    'highest_level': highestLevel,
+    'levels': [
+      for (final l in levels) {'name': l.name, 'atr': l.atr},
+    ],
+    'posture': posture?.toJson(),
+  };
+
   /// The ATR decides. A noticeable photo tilt can lift "no sign" to
   /// "borderline", but it can never produce "referral" on its own.
   ResultCategory get category {

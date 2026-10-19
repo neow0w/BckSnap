@@ -73,6 +73,15 @@ class PostureAnalysis {
   // The trunk lean is shown but not flagged: it does not change the result.
   bool get flagged => shoulderFlag || hipFlag;
 
+  Map<String, dynamic> toJson() => {
+    'shoulder_tilt': shoulderTilt,
+    'hip_tilt': hipTilt,
+    'trunk_lean': trunkLean,
+    'higher_shoulder': higherShoulder.name,
+    'higher_hip': higherHip.name,
+    'lean_side': leanSide.name,
+  };
+
   /// Returns null when the photo cannot be trusted: no landmarks, the photo
   /// failed the quality check, the patient moved, or the points were weak.
   static PostureAnalysis? from(AveragedPose? pose, {required bool reliable}) {

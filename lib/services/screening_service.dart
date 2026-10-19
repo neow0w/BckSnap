@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:convert';
 
 import '../models/screening.dart';
 import 'api_client.dart';
@@ -12,10 +13,14 @@ class ScreeningService {
     required double angle,
     Uint8List? photoBytes,
     String? photoName,
+    Map<String, dynamic>? details,
   }) async {
     final data = await _api.postMultipart(
       '/screenings',
-      fields: {'angle': angle.toString()},
+      fields: {
+        'angle': angle.toString(),
+        if (details != null) 'details': jsonEncode(details),
+      },
       fileBytes: photoBytes,
       fileName: photoName,
     ) as Map<String, dynamic>;

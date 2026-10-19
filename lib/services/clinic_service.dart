@@ -426,6 +426,27 @@ class ClinicService {
     }
   }
 
+  Future<List<Map<String, dynamic>>> pendingDoctorApplications() async {
+    final result = await _api.get('/clinic/staff/pending');
+
+    return (result as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> approveDoctorApplication(int staffId) async {
+    final result = await _api.post('/clinic/staff/$staffId/approve');
+
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<Map<String, dynamic>> rejectDoctorApplication(int staffId) async {
+    final result = await _api.post('/clinic/staff/$staffId/reject');
+
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   ClinicAppointment _appointmentFromJson(Map<String, dynamic> json) {
     final clinicId = json['clinic_id'] as int?;
     return ClinicAppointment(

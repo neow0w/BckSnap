@@ -195,6 +195,7 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
         angle: highest.atr,
         photoBytes: ScreeningDraft.photoBytes,
         photoName: ScreeningDraft.photoName,
+        details: result.toJson(),
       );
       ScreeningDraft.clear();
     } catch (_) {
