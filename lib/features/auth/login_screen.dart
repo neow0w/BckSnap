@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../services/api_client.dart';
 import '../../services/auth_service.dart';
-import '../../core/auth_destination.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,6 +19,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool _loading = false;
   bool _hidePassword = true;
+  bool _isClinicLogin = false;
   String? _error;
 
   @override
@@ -41,9 +41,18 @@ class _LoginScreenState extends State<LoginScreen> {
       await _auth.login(
         email: _emailCtrl.text.trim(),
         password: _passwordCtrl.text,
+        isClinic: _isClinicLogin,
       );
 
-      // "Is the user an admin?"
+      if (!mounted) return;
+
+      // Clinic accounts use a separate navigation path.
+      if (_isClinicLogin) {
+        context.go('/clinic-account');
+        return;
+      }
+
+      // Existing patient and staff login flow.
       final role = await _auth.getRole();
       if (!mounted) return;
 
@@ -55,11 +64,17 @@ class _LoginScreenState extends State<LoginScreen> {
         context.go('/home'); // connector A
       }
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (mounted) {
+        setState(() => _error = e.message);
+      }
     } catch (_) {
-      setState(() => _error = 'Something went wrong. Please try again.');
+      if (mounted) {
+        setState(() => _error = 'Something went wrong. Please try again.');
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -90,6 +105,29 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     const SizedBox(height: 24),
+                    SegmentedButton<bool>(
+                      segments: const [
+                        ButtonSegment<bool>(
+                          value: false,
+                          label: Text('Patient'),
+                          icon: Icon(Icons.person_outline),
+                        ),
+                        ButtonSegment<bool>(
+                          value: true,
+                          label: Text('Clinic'),
+                          icon: Icon(Icons.local_hospital_outlined),
+                        ),
+                      ],
+                      selected: {_isClinicLogin},
+                      onSelectionChanged: (selection) {
+                        setState(() {
+                          _isClinicLogin = selection.first;
+                          _error = null;
+                        });
+                      },
+                      expandedInsets: EdgeInsets.zero,
+                    ),
+                    const SizedBox(height: 20),
                     TextFormField(
                       controller: _emailCtrl,
                       keyboardType: TextInputType.emailAddress,

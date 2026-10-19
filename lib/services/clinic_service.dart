@@ -437,7 +437,9 @@ class ClinicService {
           ? null
           : DateTime.parse(json['scheduled_at'] as String).toUtc(),
       createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      updatedAt: json['updated_at'] == null
+          ? DateTime.parse(json['created_at'] as String)
+          : DateTime.parse(json['updated_at'] as String),
       clinicId: clinicId,
       clinicName: json['clinic_name'] as String?,
       clinicAddress: json['clinic_address'] as String?,

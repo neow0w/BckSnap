@@ -20,6 +20,7 @@ class ApiClient {
   static final ApiClient instance = ApiClient._();
 
   static const String _tokenKey = 'access_token';
+  static const String _accountTypeKey = 'account_type';
   static const Duration _timeout = Duration(seconds: 20);
 
   // Development: the API runs on your PC. On a phone connected by USB,
@@ -40,6 +41,8 @@ class ApiClient {
 
   String? _token;
   String? get token => _token;
+  String? _accountType;
+  String? get accountType => _accountType;
   bool get hasToken => _token != null;
 
   // ---- token storage ----------------------------------------------------
@@ -47,18 +50,22 @@ class ApiClient {
   Future<void> loadToken() async {
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString(_tokenKey);
+    _accountType = prefs.getString(_accountTypeKey);
   }
 
-  Future<void> saveToken(String token) async {
+  Future<void> saveToken(String token, {String accountType = 'user'}) async {
     _token = token;
+    _accountType = accountType;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, token);
+    await prefs.setString(_accountTypeKey, accountType);
   }
 
   Future<void> clearToken() async {
     _token = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_tokenKey);
+    await prefs.remove(_accountTypeKey);
   }
 
   // ---- requests ---------------------------------------------------------

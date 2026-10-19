@@ -345,13 +345,16 @@ class _CameraCaptureScreenState extends State<CameraCaptureScreen>
     } finally {
       _burst = null;
     }
-    return burst.average();
+    final c = _controller;
+    final aspect = c == null ? 9 / 16 : 1 / c.value.aspectRatio;
+    return burst.average(aspect: aspect);
   }
 
   void _continue() {
     ScreeningDraft.photoBytes = _captured;
     ScreeningDraft.photoName = 'back_photo.jpg';
     ScreeningDraft.landmarks = _quality?.burst;
+    ScreeningDraft.photoQualityGood = _quality?.good ?? false;
     context.go('/screening/test');
   }
 
