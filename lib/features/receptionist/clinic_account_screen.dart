@@ -448,6 +448,8 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
         return;
       }
 
+      if (!mounted) return;
+
       navigated = true;
 
       if (role == 'receptionist') {
