@@ -52,22 +52,17 @@ class AuthService {
 
   /// Approve a pending doctor application.
   Future<Map<String, dynamic>> approveDoctorApplication(int staffId) async {
-    final data = await _api.post(
-      '/clinic/staff/$staffId/approve',
-    );
+    final data = await _api.post('/clinic/staff/$staffId/approve');
 
     return Map<String, dynamic>.from(data as Map);
   }
 
   /// Reject a pending doctor application.
   Future<Map<String, dynamic>> rejectDoctorApplication(int staffId) async {
-    final data = await _api.post(
-      '/clinic/staff/$staffId/reject',
-    );
+    final data = await _api.post('/clinic/staff/$staffId/reject');
 
     return Map<String, dynamic>.from(data as Map);
   }
-
 
   AppUser? _user;
   Map<String, dynamic>? _clinic;
@@ -84,7 +79,6 @@ class AuthService {
   Future<void> init() async {
     try {
       await _api.loadToken();
-
       if (!_api.hasToken) return;
 
       if (_api.accountType == 'clinic') {
@@ -98,7 +92,6 @@ class AuthService {
         _user = null;
         _clinic = null;
       }
-      // Keep the saved session if the server is temporarily unreachable.
     } catch (_) {
       // The app can still open if startup restoration fails.
     }
@@ -135,18 +128,11 @@ class AuthService {
     }
   }
 
-
   Future<void> _apply(dynamic data) async {
     final map = data as Map<String, dynamic>;
+    await _api.saveToken(map['access_token'] as String, accountType: 'user');
 
-    await _api.saveToken(
-      map['access_token'] as String,
-      accountType: 'user',
-    );
-
-    _user = AppUser.fromJson(
-      map['user'] as Map<String, dynamic>,
-    );
+    _user = AppUser.fromJson(map['user'] as Map<String, dynamic>);
     _clinic = null;
   }
 
@@ -200,40 +186,38 @@ class AuthService {
   }
 
   // Fig 7: Login
-  
+  Future<void> login({required String email, required String password}) async {
+    try {
+      final data = await _api.post(
+        '/auth/login',
+        body: {'email': email, 'password': password},
+      );
 
+      final map = Map<String, dynamic>.from(data as Map);
 
-Future<void> login({
-  required String email,
-  required String password,
-}) async {
-  // Try the normal user endpoint first.
-  try {
+      await _api.saveToken(map['access_token'] as String, accountType: 'user');
+
+      _user = AppUser.fromJson(Map<String, dynamic>.from(map['user'] as Map));
+      _clinic = null;
+      return;
+    } on ApiException catch (e) {
+      // Only try clinic login if the credentials were rejected.
+      if (e.statusCode != 401 && e.statusCode != 403) {
+        rethrow;
+      }
+    }
+
     final data = await _api.post(
-      '/auth/login',
-      body: {
-        'email': email,
-        'password': password,
-      },
+      '/auth/clinic/login',
+      body: {'email': email, 'password': password},
     );
 
     final map = Map<String, dynamic>.from(data as Map);
 
-    await _api.saveToken(
-      map['access_token'] as String,
-      accountType: 'user',
-    );
+    await _api.saveToken(map['access_token'] as String, accountType: 'clinic');
 
-    _user = AppUser.fromJson(
-      Map<String, dynamic>.from(map['user'] as Map),
-    );
-    _clinic = null;
-    return;
-  } on ApiException catch (e) {
-    // Only try clinic login if the credentials were rejected.
-    if (e.statusCode != 401 && e.statusCode != 403) {
-      rethrow;
-    }
+    _clinic = Map<String, dynamic>.from(map['clinic'] as Map);
+    _user = null;
   }
 
   // Try clinic-level authentication if normal login was rejected.

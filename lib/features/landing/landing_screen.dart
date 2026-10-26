@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/theme.dart';
+import '../../core/widgets.dart';
+
 class LandingScreen extends StatelessWidget {
   const LandingScreen({super.key});
 
@@ -8,38 +11,39 @@ class LandingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Icon(Icons.accessibility_new, size: 96),
-              const SizedBox(height: 16),
-              const Text(
-                'Scoliosis Screening',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Expanded(child: Center(child: BrandLogo(size: 220))),
+                  Text(
+                    'Preliminary screening tool • Non-diagnostic',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    // For now this opens the camera. It will open the
+                    // Screening Hub in UI phase 3.
+                    onPressed: () => context.go('/screening/photo'),
+                    child: const Text('GET STARTED AS GUEST'),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.tonal(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.tonal,
+                      foregroundColor: AppColors.primary,
+                    ),
+                    onPressed: () => context.go('/login'),
+                    child: const Text('LOG IN'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Quick, smartphone-based screening and clinic referral.',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 40),
-              FilledButton(
-                // NO: not an existing user. The guest session is created
-                // on the photo screen.
-                onPressed: () => context.go('/screening/photo'),
-                child: const Text('Start Screening'),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                // YES: existing user
-                onPressed: () => context.go('/login'),
-                child: const Text('I already have an account'),
-              ),
-            ],
+            ),
           ),
         ),
       ),

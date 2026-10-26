@@ -64,7 +64,7 @@ class _ClinicDetailsScreenState extends State<ClinicDetailsScreen> {
                         child: const Padding(
                           padding: EdgeInsets.all(16),
                           child: Text(
-                            'DEVELOPMENT DEMO ONLY — Providers, specialties, schedules, and appointment options marked DEMO are fictional and are not real clinic services.',
+                            'Providers, specialties, schedules, and appointment options marked DEMO are fictional and are not real clinic services.',
                           ),
                         ),
                       ),
@@ -304,9 +304,8 @@ class _ClinicDetailsScreenState extends State<ClinicDetailsScreen> {
                       icon: const Icon(Icons.chat_bubble_outline),
                       label: const Text('Chat with Clinic'),
                     ),
-                    
-                    const SizedBox(height: 12),
 
+                    const SizedBox(height: 12),
                     FilledButton.icon(
                       onPressed:
                           clinic.doctors.isEmpty ||

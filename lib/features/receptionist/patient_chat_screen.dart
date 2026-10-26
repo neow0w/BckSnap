@@ -52,10 +52,7 @@ class _PatientChatScreenState extends State<PatientChatScreen> {
       _error = null;
     });
     try {
-      final list = await _service.thread(
-        widget.patientId,
-        widget.clinicId,
-      );
+      final list = await _service.thread(widget.patientId, widget.clinicId);
       if (!mounted) return;
       setState(() => _messages = list);
       _scrollToEnd();
@@ -81,11 +78,7 @@ class _PatientChatScreenState extends State<PatientChatScreen> {
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
     try {
-      await _service.reply(
-        widget.patientId,
-        widget.clinicId,
-        text,
-      );
+      await _service.reply(widget.patientId, widget.clinicId, text);
       _inputCtrl.clear();
       final list = await _service.thread(widget.patientId, widget.clinicId);
       if (!mounted) return;

@@ -53,13 +53,9 @@ class ApiClient {
     _accountType = prefs.getString(_accountTypeKey);
   }
 
-  Future<void> saveToken(
-    String token, {
-    String accountType = 'user',
-  }) async {
+  Future<void> saveToken(String token, {String accountType = 'user'}) async {
     _token = token;
     _accountType = accountType;
-
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_tokenKey, token);
     await prefs.setString(_accountTypeKey, accountType);

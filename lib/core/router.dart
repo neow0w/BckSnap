@@ -25,6 +25,7 @@ import '../features/user/home_screen.dart';
 import '../features/user/message_screen.dart';
 import '../services/auth_service.dart';
 import 'screen_placeholder.dart';
+import '../features/screening/screening_result.dart';
 
 /// Where each role lands after login (connectors A, B, C in the SFD).
 String homeFor(String role) {
@@ -81,54 +82,52 @@ final GoRouter appRouter = GoRouter(
   // Runs before every navigation. AuthService is a singleton, so we read
   // the current user directly; screens still call context.go() after
   // login/logout, which triggers this check.
+  redirect: (context, state) {
+    final auth = AuthService();
+    final user = auth.currentUser;
+    final isClinicLoggedIn = auth.isClinicLoggedIn;
+    final loggedIn = isClinicLoggedIn || (user != null && !user.isGuest);
+    final loc = state.matchedLocation;
 
-redirect: (context, state) {
-  final auth = AuthService();
-  final user = auth.currentUser;
-  final isClinicLoggedIn = auth.isClinicLoggedIn;
-  final loggedIn = isClinicLoggedIn ||
-      (user != null && !user.isGuest);
-  final loc = state.matchedLocation;
+    const clinicRoute = '/clinic-account';
+    final isClinicRoute = loc == clinicRoute;
 
-  const clinicRoute = '/clinic-account';
-  final isClinicRoute = loc == clinicRoute;
+    // Clinic accounts should use the Clinic Accounts screen.
+    if (isClinicLoggedIn) {
+      if (loc == '/login' || loc == '/') {
+        return clinicRoute;
+      }
+      if (loc == clinicRoute) return null;
 
-  // Clinic accounts should use the Clinic Accounts screen.
-  if (isClinicLoggedIn) {
-    if (loc == '/login' || loc == '/') {
+      // Do not let clinic tokens access patient or staff screens.
       return clinicRoute;
     }
-    if (loc == clinicRoute) return null;
 
-    // Do not let clinic tokens access patient or staff screens.
-    return clinicRoute;
-  }
-
-  // Clinic Accounts is not available to patient or guest sessions.
-  // Clinic Accounts is not available to patient or guest sessions.
-  if (isClinicRoute) {
-    if (!loggedIn || user == null || user.isGuest) {
-      return '/login';
+    // Clinic Accounts is not available to patient or guest sessions.
+    // Clinic Accounts is not available to patient or guest sessions.
+    if (isClinicRoute) {
+      if (!loggedIn || user == null || user.isGuest) {
+        return '/login';
+      }
+      return homeFor(user.role);
     }
-    return homeFor(user.role);
-  }
 
-  final isProtected = _protected.any((p) => _under(loc, p));
+    final isProtected = _protected.any((p) => _under(loc, p));
 
-  if (!loggedIn) {
-    return isProtected ? '/login' : null;
-  }
+    if (!loggedIn) {
+      return isProtected ? '/login' : null;
+    }
 
-  if (_entryScreens.contains(loc)) {
-    return homeFor(user!.role);
-  }
+    if (_entryScreens.contains(loc)) {
+      return homeFor(user!.role);
+    }
 
-  if (isProtected && !_roleAllowed(user!.role, loc)) {
-    return homeFor(user.role);
-  }
+    if (isProtected && !_roleAllowed(user!.role, loc)) {
+      return homeFor(user.role);
+    }
 
-  return null;
-},
+    return null;
+  },
 
   routes: [
     // Figure 7: landing, login, sign-up, reset, screening
@@ -163,8 +162,11 @@ redirect: (context, state) {
     GoRoute(
       path: '/screening/result',
       builder: (c, s) {
-        final angle = s.extra is double ? s.extra as double : 0.0;
-        return ResultScreen(angle: angle);
+        final e = s.extra;
+        final data = e is ResultData
+            ? e
+            : ResultData.fromAtr(e is double ? e : 0.0);
+        return ResultScreen(data: data);
       },
     ),
 
@@ -200,9 +202,8 @@ redirect: (context, state) {
     ),
     GoRoute(
       path: '/message/:clinicId',
-      builder: (c, s) => MessageScreen(
-        clinicId: int.parse(s.pathParameters['clinicId']!),
-      ),
+      builder: (c, s) =>
+          MessageScreen(clinicId: int.parse(s.pathParameters['clinicId']!)),
     ),
 
     // Figure 9: receptionist (connector B)
@@ -211,31 +212,25 @@ redirect: (context, state) {
       builder: (c, s) => const StaffAppointmentsScreen(isReception: true),
     ),
     GoRoute(path: '/reception/inbox', builder: (c, s) => const InboxScreen()),
-    
-  
-  
-  GoRoute(
-    path: '/reception/chat/:patientId',
-    builder: (c, s) {
-      final auth = AuthService();
-      final clinicId = auth.currentUser?.clinicId;
+    GoRoute(
+      path: '/reception/chat/:patientId',
+      builder: (c, s) {
+        final auth = AuthService();
+        final clinicId = auth.currentUser?.clinicId;
 
-      if (clinicId == null) {
-        throw StateError(
-          'The logged-in receptionist has no clinic assigned.',
+        if (clinicId == null) {
+          throw StateError(
+            'The logged-in receptionist has no clinic assigned.',
+          );
+        }
+
+        return PatientChatScreen(
+          patientId: _id(s, 'patientId'),
+          clinicId: clinicId,
+          patientName: s.extra is String ? s.extra as String : null,
         );
-      }
-
-      return PatientChatScreen(
-        patientId: _id(s, 'patientId'),
-        clinicId: clinicId,
-        patientName: s.extra is String ? s.extra as String : null,
-      );
-    },
-  ),
-
-
-
+      },
+    ),
 
     // Figure 10: doctor (connector C)
     GoRoute(

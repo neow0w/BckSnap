@@ -1,12 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../services/screening_draft.dart';
 import '../../services/screening_service.dart';
 import '../../services/tilt_sensor.dart';
 import 'back_levels.dart';
+
+import 'posture_analysis.dart';
+import 'screening_result.dart';
 
 enum _Phase { zero, measure, review }
 
@@ -33,6 +37,12 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
   @override
   void initState() {
     super.initState();
+    // The phone lies on the back with its long edge across the spine,
+    // so the screen is shown in landscape.
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
     _sensor.start();
     // No sensor data after 2 seconds (a computer): test mode with a slider.
     _sensorTimer = Timer(const Duration(seconds: 2), () {
@@ -46,6 +56,8 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
   void dispose() {
     _sensorTimer?.cancel();
     _sensor.dispose();
+    // Give the other screens their normal rotation back.
+    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     super.dispose();
   }
 
@@ -156,10 +168,26 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
   }
 
   // Save the highest ATR, then show the result.
+  // Save the highest ATR, then show the result.
   Future<void> _save() async {
     final highest = _highest;
     if (highest == null) return;
     setState(() => _saving = true);
+
+    // Build the result first: the draft is cleared after saving.
+    final result = ResultData(
+      highestAtr: highest.atr,
+      highestLevel: highest.level.name,
+      levels: [
+        for (final level in BackLevels.all)
+          if (_readings[level.id] != null)
+            LevelResult(level.name, _readings[level.id]!.atr),
+      ],
+      posture: PostureAnalysis.from(
+        ScreeningDraft.landmarks,
+        reliable: ScreeningDraft.photoQualityGood,
+      ),
+    );
 
     var saved = true;
     try {
@@ -167,6 +195,7 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
         angle: highest.atr,
         photoBytes: ScreeningDraft.photoBytes,
         photoName: ScreeningDraft.photoName,
+        details: result.toJson(),
       );
       ScreeningDraft.clear();
     } catch (_) {
@@ -184,9 +213,8 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
         ),
       );
     }
-    context.go('/screening/result', extra: highest.atr);
+    context.go('/screening/result', extra: result);
   }
-
   // ---- UI -------------------------------------------------------------------
 
   @override
@@ -198,15 +226,39 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
     };
     return Scaffold(
       appBar: AppBar(
+        toolbarHeight: 48,
         title: Text(title),
         leading: BackButton(onPressed: _back),
       ),
       body: SafeArea(
-        child: switch (_phase) {
-          _Phase.zero => _buildZero(),
-          _Phase.measure => _buildMeasure(),
-          _Phase.review => _buildReview(),
-        },
+        child: Row(
+          children: [
+            Expanded(flex: 5, child: _buildLeft()),
+            const VerticalDivider(width: 1),
+            Expanded(
+              flex: 6,
+              child: switch (_phase) {
+                _Phase.zero => _buildZero(),
+                _Phase.measure => _buildMeasure(),
+                _Phase.review => _buildReview(),
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Left side: the big live reading (or the highest ATR in the review).
+  Widget _buildLeft() {
+    if (_phase == _Phase.review) return _buildSummary();
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          Expanded(child: Center(child: _liveReading())),
+          if (_sensor.testMode) _simulatorSlider(),
+        ],
       ),
     );
   }
@@ -217,10 +269,17 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
       builder: (context, value, _) {
         final steady = _sensor.isSteady;
         return Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              '${value.abs().toStringAsFixed(1)}°',
-              style: const TextStyle(fontSize: 64, fontWeight: FontWeight.bold),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                '${value.abs().toStringAsFixed(1)}°',
+                style: const TextStyle(
+                  fontSize: 96,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             Text('Angle of trunk rotation  (${value >= 0 ? "+" : "-"})'),
             const SizedBox(height: 8),
@@ -240,6 +299,7 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
 
   Widget _simulatorSlider() {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         const Text(
           'No motion sensor detected. Test mode: use the slider.',
@@ -261,11 +321,32 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
     );
   }
 
-  Widget _buildZero() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
+  /// Right side layout: scrolling content with the buttons pinned below it.
+  Widget _rightPanel({
+    required List<Widget> body,
+    required List<Widget> actions,
+  }) {
+    return Column(
       children: [
-        const Card(
+        Expanded(
+          child: ListView(padding: const EdgeInsets.all(12), children: body),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: actions,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildZero() {
+    return _rightPanel(
+      body: const [
+        Card(
           child: Padding(
             padding: EdgeInsets.all(16),
             child: Column(
@@ -295,10 +376,8 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 24),
-        _liveReading(),
-        if (_sensor.testMode) _simulatorSlider(),
-        const SizedBox(height: 24),
+      ],
+      actions: [
         FilledButton.icon(
           onPressed: _setZeroAndStart,
           icon: const Icon(Icons.exposure_zero),
@@ -313,9 +392,8 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
     final pending = _pending;
     final total = BackLevels.all.length;
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
+    return _rightPanel(
+      body: [
         Text(
           _fromReview
               ? 'Re-measuring: ${level.name}'
@@ -344,10 +422,6 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        _liveReading(),
-        if (_sensor.testMode) _simulatorSlider(),
-        const SizedBox(height: 16),
         if (_message != null)
           Card(
             color: Colors.orange.withValues(alpha: 0.15),
@@ -356,117 +430,102 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
               child: Text(_message!),
             ),
           ),
-        const SizedBox(height: 8),
-        if (pending == null)
-          FilledButton.icon(
-            onPressed: _capturing ? null : () => _capture(level),
-            icon: _capturing
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.check_circle),
-            label: Text(_capturing ? 'Hold still...' : 'Capture reading'),
-          )
-        else
+        if (pending != null)
           Card(
             color: Colors.green.withValues(alpha: 0.12),
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Reading: ${pending.atr.toStringAsFixed(1)}°',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: _keep,
-                    child: Text(
-                      _fromReview || _levelIndex >= total - 1
-                          ? 'Keep this reading'
-                          : 'Keep and go to the next level',
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: _remeasure,
-                    child: const Text('Re-measure'),
-                  ),
-                ],
+              child: Text(
+                'Reading: ${pending.atr.toStringAsFixed(1)}°',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ),
       ],
+      actions: pending == null
+          ? [
+              FilledButton.icon(
+                onPressed: _capturing ? null : () => _capture(level),
+                icon: _capturing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.check_circle),
+                label: Text(_capturing ? 'Hold still...' : 'Capture reading'),
+              ),
+            ]
+          : [
+              FilledButton(
+                onPressed: _keep,
+                child: Text(
+                  _fromReview || _levelIndex >= total - 1
+                      ? 'Keep this reading'
+                      : 'Keep and go to the next level',
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: _remeasure,
+                child: const Text('Re-measure'),
+              ),
+            ],
+    );
+  }
+
+  Widget _buildSummary() {
+    final highest = _highest;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: highest == null
+            ? const Text('No readings yet. Measure at least one level.')
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Highest ATR (this is the value saved)'),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      '${highest.atr.toStringAsFixed(1)}°',
+                      style: const TextStyle(
+                        fontSize: 96,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Text('at the ${highest.level.name.toLowerCase()} level'),
+                ],
+              ),
+      ),
     );
   }
 
   Widget _buildReview() {
     final highest = _highest;
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Card(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: highest == null
-                      ? const Text(
-                          'No readings yet. Measure at least one level.',
-                        )
-                      : Column(
-                          children: [
-                            const Text('Highest ATR (this is the value saved)'),
-                            Text(
-                              '${highest.atr.toStringAsFixed(1)}°',
-                              style: const TextStyle(
-                                fontSize: 44,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'at the ${highest.level.name.toLowerCase()} level',
-                            ),
-                          ],
-                        ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              for (var i = 0; i < BackLevels.all.length; i++)
-                _reviewTile(i, highest),
-            ],
-          ),
+    return _rightPanel(
+      body: [
+        for (var i = 0; i < BackLevels.all.length; i++) _reviewTile(i, highest),
+      ],
+      actions: [
+        FilledButton(
+          onPressed: (highest == null || _saving) ? null : _save,
+          child: _saving
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Confirm and save'),
         ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FilledButton(
-                onPressed: (highest == null || _saving) ? null : _save,
-                child: _saving
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Confirm and save'),
-              ),
-              TextButton(
-                onPressed: _saving ? null : _measureAgain,
-                child: const Text('Measure all levels again'),
-              ),
-            ],
-          ),
+        TextButton(
+          onPressed: _saving ? null : _measureAgain,
+          child: const Text('Measure all levels again'),
         ),
       ],
     );
@@ -479,6 +538,7 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
         r != null && highest != null && r.level.id == highest.level.id;
     return Card(
       child: ListTile(
+        dense: true,
         leading: Icon(
           isHighest ? Icons.star : Icons.straighten,
           color: isHighest ? Colors.amber : null,
@@ -487,7 +547,7 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
         subtitle: Text(
           r == null
               ? 'Not measured'
-              : 'ATR ${r.atr.toStringAsFixed(1)}°   (moved ${r.range.toStringAsFixed(1)}° during the reading)',
+              : 'ATR ${r.atr.toStringAsFixed(1)}°   (moved ${r.range.toStringAsFixed(1)}°)',
         ),
         trailing: OutlinedButton(
           onPressed: _saving ? null : () => _remeasureLevel(index),

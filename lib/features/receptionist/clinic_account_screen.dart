@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -9,8 +8,7 @@ class ClinicAccountScreen extends StatefulWidget {
   const ClinicAccountScreen({super.key});
 
   @override
-  State<ClinicAccountScreen> createState() =>
-      _ClinicAccountScreenState();
+  State<ClinicAccountScreen> createState() => _ClinicAccountScreenState();
 }
 
 class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
@@ -19,7 +17,6 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
   bool _loading = false;
   String? _error;
 
-  
   Future<void> _openAddProfile() async {
     final formKey = GlobalKey<FormState>();
     final firstNameController = TextEditingController();
@@ -43,12 +40,12 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
             final age = dateOfBirth == null
                 ? null
                 : DateTime.now().year -
-                    dateOfBirth!.year -
-                    (DateTime.now().month < dateOfBirth!.month ||
-                            (DateTime.now().month == dateOfBirth!.month &&
-                                DateTime.now().day < dateOfBirth!.day)
-                        ? 1
-                        : 0);
+                      dateOfBirth!.year -
+                      (DateTime.now().month < dateOfBirth!.month ||
+                              (DateTime.now().month == dateOfBirth!.month &&
+                                  DateTime.now().day < dateOfBirth!.day)
+                          ? 1
+                          : 0);
 
             return AlertDialog(
               title: const Text('Add Staff Profile'),
@@ -95,8 +92,8 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
                           ),
                           validator: (value) =>
                               value == null || value.trim().isEmpty
-                                  ? 'Enter first name'
-                                  : null,
+                              ? 'Enter first name'
+                              : null,
                         ),
                         const SizedBox(height: 12),
                         TextFormField(
@@ -107,8 +104,8 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
                           ),
                           validator: (value) =>
                               value == null || value.trim().isEmpty
-                                  ? 'Enter last name'
-                                  : null,
+                              ? 'Enter last name'
+                              : null,
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton.icon(
@@ -137,9 +134,9 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
                             dateOfBirth == null
                                 ? 'Select date of birth'
                                 : '${dateOfBirth!.month.toString().padLeft(2, '0')}/'
-                                  '${dateOfBirth!.day.toString().padLeft(2, '0')}/'
-                                  '${dateOfBirth!.year}'
-                                  ' — Age: $age',
+                                      '${dateOfBirth!.day.toString().padLeft(2, '0')}/'
+                                      '${dateOfBirth!.year}'
+                                      ' — Age: $age',
                           ),
                         ),
 
@@ -149,9 +146,7 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
                             alignment: Alignment.centerLeft,
                             child: Text(
                               'Profession(s)',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -179,8 +174,9 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
                               onPressed: saving
                                   ? null
                                   : () {
-                                      final profession =
-                                          professionController.text.trim();
+                                      final profession = professionController
+                                          .text
+                                          .trim();
 
                                       if (profession.isEmpty) return;
 
@@ -204,8 +200,9 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
                                       ? null
                                       : () {
                                           setDialogState(() {
-                                            selectedProfessions
-                                                .remove(profession);
+                                            selectedProfessions.remove(
+                                              profession,
+                                            );
                                           });
                                         },
                                 );
@@ -225,8 +222,7 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
                             if (value == null || value.trim().isEmpty) {
                               return 'Enter email';
                             }
-                            if (!value.contains('@') ||
-                                !value.contains('.')) {
+                            if (!value.contains('@') || !value.contains('.')) {
                               return 'Enter a valid email';
                             }
                             return null;
@@ -279,8 +275,7 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
                             return;
                           }
 
-                          if (role == 'doctor' &&
-                              selectedProfessions.isEmpty) {
+                          if (role == 'doctor' && selectedProfessions.isEmpty) {
                             setDialogState(() {
                               formError =
                                   'Select at least one doctor profession.';
@@ -307,8 +302,10 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
                             );
 
                             if (!dialogContext.mounted) return;
-                            Navigator.of(dialogContext, rootNavigator: true).pop(true);
-                            
+                            Navigator.of(
+                              dialogContext,
+                              rootNavigator: true,
+                            ).pop(true);
                           } on ApiException catch (e) {
                             setDialogState(() {
                               saving = false;
@@ -317,8 +314,7 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
                           } catch (_) {
                             setDialogState(() {
                               saving = false;
-                              formError =
-                                  'Could not create the profile. Please try again.';
+                              formError = 'Could not create the profile. Please try again.';
                             });
                           }
                         },
@@ -355,141 +351,128 @@ class _ClinicAccountScreenState extends State<ClinicAccountScreen> {
     }
   }
 
+  Future<void> _openProfile({
+    required String title,
+    required String expectedRole,
+  }) async {
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
 
+    List<String>? credentials;
 
-Future<void> _openProfile({
-  required String title,
-  required String expectedRole,
-}) async {
-  final emailController = TextEditingController();
-  final passwordController = TextEditingController();
-  final formKey = GlobalKey<FormState>();
-
-  List<String>? credentials;
-
-
-  credentials = await showDialog<List<String>>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text('$title Login'),
-      content: Form(
-        key: formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: emailController,
-              decoration: const InputDecoration(
-                labelText: 'Staff email',
-                border: OutlineInputBorder(),
+    credentials = await showDialog<List<String>>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('$title Login'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: emailController,
+                decoration: const InputDecoration(
+                  labelText: 'Staff email',
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? 'Enter the staff email'
+                    : null,
               ),
-              keyboardType: TextInputType.emailAddress,
-              validator: (value) =>
-                  value == null || value.trim().isEmpty
-                      ? 'Enter the staff email'
-                      : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Password',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Password',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) => value == null || value.isEmpty
+                    ? 'Enter the password'
+                    : null,
               ),
-              validator: (value) =>
-                  value == null || value.isEmpty
-                      ? 'Enter the password'
-                      : null,
-            ),
-          ],
+            ],
+          ),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.of(
+                  dialogContext,
+                ).pop([emailController.text.trim(), passwordController.text]);
+              }
+            },
+            child: const Text('Continue'),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (formKey.currentState!.validate()) {
-              Navigator.of(dialogContext).pop([
-                emailController.text.trim(),
-                passwordController.text,
-              ]);
-            }
-          },
-          child: const Text('Continue'),
-        ),
-      ],
-    ),
-  );
-
-  await Future<void>.delayed(
-    const Duration(milliseconds: 300),
-  );
-
-  emailController.dispose();
-  passwordController.dispose();
-
-
-  // Cancel closes the dialog without attempting login.
-  if (credentials == null || !mounted) return;
-
-  setState(() {
-    _loading = true;
-    _error = null;
-  });
-
-  var navigated = false;
-
-  try {
-    await _auth.login(
-      email: credentials[0],
-      password: credentials[1],
     );
 
-    final role = await _auth.getRole();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
 
-    if (!mounted) return;
+    emailController.dispose();
+    passwordController.dispose();
 
-    if (role != expectedRole) {
-      await _auth.logout();
+    // Cancel closes the dialog without attempting login.
+    if (credentials == null || !mounted) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    var navigated = false;
+
+    try {
+      await _auth.login(email: credentials[0], password: credentials[1]);
+
+      final role = await _auth.getRole();
+
+      if (role != expectedRole) {
+        await _auth.logout();
+
+        if (!mounted) return;
+
+        setState(() {
+          _error = expectedRole == 'receptionist'
+              ? 'Please use a receptionist account.'
+              : 'Please use a doctor account.';
+        });
+        return;
+      }
 
       if (!mounted) return;
 
-      setState(() {
-        _error = expectedRole == 'receptionist'
-            ? 'Please use a receptionist account.'
-            : 'Please use a doctor account.';
-      });
-      return;
-    }
+      navigated = true;
 
-    navigated = true;
-
-    if (role == 'receptionist') {
-      context.go('/reception');
-    } else if (role == 'doctor') {
-      context.go('/doctor');
-    }
-  } on ApiException catch (e) {
-    if (mounted) {
-      setState(() => _error = e.message);
-    }
-  } catch (_) {
-    if (mounted) {
-      setState(() {
-        _error = 'Unable to sign in. Please try again.';
-      });
-    }
-  } finally {
-    if (mounted && !navigated) {
-      setState(() => _loading = false);
+      if (role == 'receptionist') {
+        context.go('/reception');
+      } else if (role == 'doctor') {
+        context.go('/doctor');
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _error = e.message);
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _error = 'Unable to sign in. Please try again.';
+        });
+      }
+    } finally {
+      if (mounted && !navigated) {
+        setState(() => _loading = false);
+      }
     }
   }
-}
-
 
   Widget _profileCard({
     required IconData icon,
@@ -501,10 +484,7 @@ Future<void> _openProfile({
       child: ListTile(
         contentPadding: const EdgeInsets.all(16),
         leading: CircleAvatar(child: Icon(icon)),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.arrow_forward_ios, size: 16),
         onTap: _loading ? null : onTap,
@@ -541,10 +521,7 @@ Future<void> _openProfile({
               const Text(
                 'Select a staff profile',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -553,14 +530,10 @@ Future<void> _openProfile({
               ),
               const SizedBox(height: 24),
               if (_error != null) ...[
-                Text(
-                  _error!,
-                  style: const TextStyle(color: Colors.red),
-                ),
+                Text(_error!, style: const TextStyle(color: Colors.red)),
                 const SizedBox(height: 12),
               ],
-              if (_loading)
-                const Center(child: CircularProgressIndicator()),
+              if (_loading) const Center(child: CircularProgressIndicator()),
               _profileCard(
                 icon: Icons.admin_panel_settings_outlined,
                 title: 'Receptionist',

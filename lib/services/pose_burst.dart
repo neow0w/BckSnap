@@ -28,11 +28,13 @@ class AveragedPose {
   points; // averaged landmarks, same numbering as PoseIndex
   final int frames; // how many detections were averaged
   final double spread; // movement of shoulders and hips during the burst
+  final double aspect; // width / height of the upright camera image
 
   const AveragedPose({
     required this.points,
     required this.frames,
     required this.spread,
+    this.aspect = 9 / 16,
   });
 
   BodyPoint? point(int i) => (i >= 0 && i < points.length) ? points[i] : null;
@@ -48,7 +50,7 @@ class PoseBurst {
     if (f.found) _frames.add(f);
   }
 
-  AveragedPose? average() {
+  AveragedPose? average({double aspect = 9 / 16}) {
     if (_frames.isEmpty) return null;
     final n = _frames.length;
     final pointCount = _frames.map((f) => f.points.length).reduce(math.min);
@@ -86,6 +88,11 @@ class PoseBurst {
       spread = math.max(spread, math.sqrt(v / n));
     }
 
-    return AveragedPose(points: points, frames: n, spread: spread);
+    return AveragedPose(
+      points: points,
+      frames: n,
+      spread: spread,
+      aspect: aspect,
+    );
   }
 }

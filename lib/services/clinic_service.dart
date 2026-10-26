@@ -447,7 +447,6 @@ class ClinicService {
     return Map<String, dynamic>.from(result as Map);
   }
 
-
   ClinicAppointment _appointmentFromJson(Map<String, dynamic> json) {
     final clinicId = json['clinic_id'] as int?;
     return ClinicAppointment(
@@ -460,8 +459,8 @@ class ClinicService {
           : DateTime.parse(json['scheduled_at'] as String).toUtc(),
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: json['updated_at'] == null
-        ? DateTime.parse(json['created_at'] as String)
-        : DateTime.parse(json['updated_at'] as String),
+          ? DateTime.parse(json['created_at'] as String)
+          : DateTime.parse(json['updated_at'] as String),
       clinicId: clinicId,
       clinicName: json['clinic_name'] as String?,
       clinicAddress: json['clinic_address'] as String?,

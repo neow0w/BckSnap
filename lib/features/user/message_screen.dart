@@ -9,10 +9,7 @@ import '../../models/message.dart';
 class MessageScreen extends StatefulWidget {
   final int clinicId;
 
-  const MessageScreen({
-    super.key,
-    required this.clinicId,
-  });
+  const MessageScreen({super.key, required this.clinicId});
 
   @override
   State<MessageScreen> createState() => _MessageScreenState();
@@ -137,134 +134,120 @@ class _MessageScreenState extends State<MessageScreen> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _error != null && _messages.isEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  _error!,
-                                  textAlign: TextAlign.center,
-                                ),
-                                const SizedBox(height: 12),
-                                FilledButton(
-                                  onPressed: () {
-                                    setState(() => _loading = true);
-                                    _loadMessages();
-                                  },
-                                  child: const Text('Retry'),
-                                ),
-                              ],
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_error!, textAlign: TextAlign.center),
+                            const SizedBox(height: 12),
+                            FilledButton(
+                              onPressed: () {
+                                setState(() => _loading = true);
+                                _loadMessages();
+                              },
+                              child: const Text('Retry'),
                             ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : _messages.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.chat_bubble_outline,
+                            size: 48,
+                            color: theme.colorScheme.primary,
                           ),
-                        )
-                      : _messages.isEmpty
-                          ? Center(
+                          const SizedBox(height: 12),
+                          const Text('No messages yet'),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Send a message to start the conversation.',
+                            style: theme.textTheme.bodySmall,
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _loadMessages,
+                      child: ListView.builder(
+                        controller: _scrollCtrl,
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          final message = _messages[index];
+                          final isPatient = message.fromPatient;
+
+                          return Align(
+                            alignment: isPatient
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
+                            child: Container(
+                              constraints: BoxConstraints(
+                                maxWidth:
+                                    MediaQuery.sizeOf(context).width * 0.78,
+                              ),
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isPatient
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
                               child: Column(
-                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(
-                                    Icons.chat_bubble_outline,
-                                    size: 48,
-                                    color: theme.colorScheme.primary,
+                                  Text(
+                                    isPatient ? 'You' : 'Clinic',
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: isPatient
+                                          ? theme.colorScheme.onPrimary
+                                          : theme.colorScheme.onSurfaceVariant,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
-                                  const SizedBox(height: 12),
-                                  const Text('No messages yet'),
                                   const SizedBox(height: 4),
                                   Text(
-                                    'Send a message to start the conversation.',
-                                    style: theme.textTheme.bodySmall,
-                                    textAlign: TextAlign.center,
+                                    message.body,
+                                    style: TextStyle(
+                                      color: isPatient
+                                          ? theme.colorScheme.onPrimary
+                                          : theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _time(message.createdAt),
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: isPatient
+                                          ? theme.colorScheme.onPrimary
+                                                .withValues(alpha: 0.8)
+                                          : theme.colorScheme.onSurfaceVariant,
+                                    ),
                                   ),
                                 ],
                               ),
-                            )
-                          : RefreshIndicator(
-                              onRefresh: _loadMessages,
-                              child: ListView.builder(
-                                controller: _scrollCtrl,
-                                physics:
-                                    const AlwaysScrollableScrollPhysics(),
-                                padding: const EdgeInsets.all(16),
-                                itemCount: _messages.length,
-                                itemBuilder: (context, index) {
-                                  final message = _messages[index];
-                                  final isPatient = message.fromPatient;
-
-                                  return Align(
-                                    alignment: isPatient
-                                        ? Alignment.centerRight
-                                        : Alignment.centerLeft,
-                                    child: Container(
-                                      constraints: BoxConstraints(
-                                        maxWidth:
-                                            MediaQuery.sizeOf(context).width *
-                                                0.78,
-                                      ),
-                                      margin:
-                                          const EdgeInsets.only(bottom: 12),
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 14,
-                                        vertical: 10,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: isPatient
-                                            ? theme.colorScheme.primary
-                                            : theme.colorScheme.surfaceContainerHighest,
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            isPatient ? 'You' : 'Clinic',
-                                            style: theme.textTheme.labelSmall
-                                                ?.copyWith(
-                                              color: isPatient
-                                                  ? theme.colorScheme.onPrimary
-                                                  : theme.colorScheme
-                                                      .onSurfaceVariant,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            message.body,
-                                            style: TextStyle(
-                                              color: isPatient
-                                                  ? theme.colorScheme.onPrimary
-                                                  : theme.colorScheme.onSurface,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            _time(message.createdAt),
-                                            style: theme.textTheme.labelSmall
-                                                ?.copyWith(
-                                              color: isPatient
-                                                  ? theme.colorScheme.onPrimary
-                                                      .withValues(alpha: 0.8)
-                                                  : theme.colorScheme
-                                                      .onSurfaceVariant,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
                             ),
+                          );
+                        },
+                      ),
+                    ),
             ),
             if (_error != null && _messages.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  _error!,
-                  style: const TextStyle(color: Colors.red),
-                ),
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
               ),
             const Divider(height: 1),
             Padding(
@@ -295,9 +278,7 @@ class _MessageScreenState extends State<MessageScreen> {
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                            ),
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.send),
                   ),

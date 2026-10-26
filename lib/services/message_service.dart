@@ -8,16 +8,12 @@ class MessageService {
 
   /// POST /messages/{clinic_id}
   Future<void> sendMessage(int clinicId, String body) async {
-    await _api.post(
-      '/messages/$clinicId',
-      body: {'body': body},
-    );
+    await _api.post('/messages/$clinicId', body: {'body': body});
   }
 
   /// GET /messages/mine/{clinic_id}
   Future<List<ChatMessage>> getMyMessages(int clinicId) async {
     final data = await _api.get('/messages/mine/$clinicId') as List;
-
     final messages = [
       for (final item in data)
         ChatMessage.fromJson(Map<String, dynamic>.from(item as Map)),
@@ -37,14 +33,10 @@ class MessageService {
   }
 
   /// GET /messages/patient/{patient_id}?clinic_id={clinic_id}
-  Future<List<ChatMessage>> thread(
-    int patientId,
-    int clinicId,
-  ) async {
+  Future<List<ChatMessage>> thread(int patientId, int clinicId) async {
     final data = await _api.get(
       '/messages/patient/$patientId?clinic_id=$clinicId',
     ) as List;
-
     final list = [
       for (final e in data)
         ChatMessage.fromJson(Map<String, dynamic>.from(e as Map)),
@@ -55,11 +47,7 @@ class MessageService {
   }
 
   /// POST /messages/patient/{patient_id}?clinic_id={clinic_id}
-  Future<void> reply(
-    int patientId,
-    int clinicId,
-    String body,
-  ) async {
+  Future<void> reply(int patientId, int clinicId, String body) async {
     await _api.post(
       '/messages/patient/$patientId?clinic_id=$clinicId',
       body: {'body': body},
