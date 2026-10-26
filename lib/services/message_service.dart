@@ -1,3 +1,4 @@
+
 import '../models/message.dart';
 import 'api_client.dart';
 
@@ -40,6 +41,7 @@ class MessageService {
       for (final e in data)
         ChatMessage.fromJson(Map<String, dynamic>.from(e as Map)),
     ];
+
     list.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     return list;
   }

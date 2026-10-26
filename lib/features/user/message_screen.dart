@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -114,8 +115,9 @@ class _MessageScreenState extends State<MessageScreen> {
       appBar: AppBar(
         title: const Text('Contact Clinic'),
         leading: BackButton(
-          onPressed: () =>
-              context.canPop() ? context.pop() : context.go('/home'),
+          onPressed: () => context.canPop()
+              ? context.pop()
+              : context.go('/home'),
         ),
         actions: [
           IconButton(

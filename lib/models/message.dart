@@ -13,14 +13,13 @@ class ChatMessage {
   });
 
   // FIELD NAMES: change the keys here if your API differs.
-  factory ChatMessage.fromJson(Map<String, dynamic> json) {
-    final role = (json['sender_role'] ?? '').toString().toLowerCase();
-    final fromPatient = json['from_patient'] is bool
-        ? json['from_patient'] as bool
-        : (role == 'user' || role == 'patient');
+    factory ChatMessage.fromJson(Map<String, dynamic> json) {
+      final fromPatient = json['from_patient'] as bool? ??
+        json['from_clinic'] == false;
+
     return ChatMessage(
-      id: json['id'] as int,
-      body: (json['body'] ?? '') as String,
+      id: (json['id'] as num).toInt(),
+      body: (json['body'] ?? '').toString(),
       fromPatient: fromPatient,
       createdAt: parseUtc(json['created_at'] as String),
     );

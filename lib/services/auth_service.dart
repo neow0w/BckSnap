@@ -75,6 +75,7 @@ class AuthService {
   bool get isGuest => _user == null || _user!.isGuest;
 
   /// Runs once when the app starts: restores the saved login, if any.
+  
   Future<void> init() async {
     try {
       await _api.loadToken();
@@ -95,6 +96,7 @@ class AuthService {
       // The app can still open if startup restoration fails.
     }
   }
+
 
   Future<void> _refresh() async {
     try {
@@ -217,6 +219,29 @@ class AuthService {
     _clinic = Map<String, dynamic>.from(map['clinic'] as Map);
     _user = null;
   }
+
+  // Try clinic-level authentication if normal login was rejected.
+  final data = await _api.post(
+    '/auth/clinic/login',
+    body: {
+      'email': email,
+      'password': password,
+    },
+  );
+
+  final map = Map<String, dynamic>.from(data as Map);
+
+  await _api.saveToken(
+    map['access_token'] as String,
+    accountType: 'clinic',
+  );
+
+  _clinic = Map<String, dynamic>.from(map['clinic'] as Map);
+  _user = null;
+}
+
+
+
 
   // Fig 7: Reset password, step 1 -> "Password reset email sent"
   Future<void> resetPassword(String email) async {

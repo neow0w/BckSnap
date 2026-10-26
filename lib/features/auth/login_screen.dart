@@ -29,19 +29,32 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
 
-    try {
-      await _auth.login(
-        email: _emailCtrl.text.trim(),
-        password: _passwordCtrl.text,
-      );
+Future<void> _submit() async {
+  if (!_formKey.currentState!.validate()) return;
+
+  setState(() {
+    _loading = true;
+    _error = null;
+  });
+
+  try {
+    await _auth.login(
+      email: _emailCtrl.text.trim(),
+      password: _passwordCtrl.text,
+    );
+
+    if (!mounted) return;
+
+    if (_auth.isClinicLoggedIn) {
+      context.go('/clinic-account');
+      return;
+    }
+
+    final role = await _auth.getRole();
+
+    if (!mounted) return;
 
       if (!mounted) return;
 
@@ -75,6 +88,9 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     }
   }
+}
+
+
 
   @override
   Widget build(BuildContext context) {
