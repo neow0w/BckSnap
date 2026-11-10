@@ -23,4 +23,3 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_BCKSNAP_3F858 }}
           channelId: live
           projectId: bcksnap-3f858
-          projectId: bcksnap-3f858
