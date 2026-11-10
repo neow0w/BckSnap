@@ -24,7 +24,7 @@ class ScolioApp extends StatelessWidget {
     return ListenableBuilder(
       listenable: ThemeController.instance,
       builder: (context, _) => MaterialApp.router(
-        title: kIsWeb ? 'BckSnap Staff Portal' : 'Scoliosis Screening',
+        title: kIsWeb ? 'BckSnap Clinic Portal' : 'Scoliosis Screening',
         theme: appTheme,
         darkTheme: appDarkTheme, // <- your dark theme
         themeMode: ThemeController.instance.mode,
