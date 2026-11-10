@@ -1,5 +1,7 @@
 import 'dart:typed_data';
+import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -757,6 +759,7 @@ class AuthService {
       throw ApiException(403, 'This profile is not available.');
     }
 
+    final String token;
     try {
       final firebaseToken = await getFirebaseIdToken();
 
@@ -784,25 +787,49 @@ class AuthService {
 
         throw ApiException(response.statusCode, message);
       }
-      final token = data['token'] as String;
-
-      // Save the session securely so it survives browser refreshes.
-      await _secureStorage.write(key: _profileSessionKey, value: token);
-
-      _profileSessionToken = data['token'] as String;
-
-      _profile = p;
-      _apply();
-      ProfileMemory.save(p.id);
-      AuditLog.record(action: 'login');
+      token = data['token'] as String;
     } on ApiException {
       rethrow;
-    } catch (_) {
+    } on TimeoutException {
+      throw ApiException(
+        0,
+        'The profile service took too long to answer. Please try again.',
+      );
+    } on http.ClientException catch (e) {
+      debugPrint('chooseProfile: request failed (network or CORS): $e');
+      throw ApiException(
+        0,
+        'Cannot reach the profile service. Check your connection and try again.',
+      );
+    } on FormatException catch (e) {
+      debugPrint('chooseProfile: the answer was not JSON: $e');
+      throw ApiException(
+        502,
+        'The profile service sent an unexpected answer. Please try again.',
+      );
+    } catch (e) {
+      debugPrint('chooseProfile failed: $e');
       throw ApiException(
         500,
         'Unable to connect to the secure profile service. Please try again.',
       );
     }
+
+    // The password was accepted: open the profile now.
+    _profileSessionToken = token;
+    _profile = p;
+    _apply();
+    ProfileMemory.save(p.id);
+
+    // Saving the token only helps after a page refresh, so a storage
+    // problem must not stop the login.
+    try {
+      await _secureStorage.write(key: _profileSessionKey, value: token);
+    } catch (e) {
+      debugPrint('chooseProfile: could not save the session: $e');
+    }
+
+    AuditLog.record(action: 'login');
   }
 
   Future<bool> validateProfileSession() async {
