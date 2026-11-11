@@ -268,23 +268,40 @@ const FIREBASE_JWKS = createRemoteJWKSet(
 const APPOINTMENT_PREFIX = "bcksnap_appointment_";
 const JOIN_WINDOW_MINUTES = 15;
 
-function getCorsHeaders(origin: string | null) {
-  const allowedOrigin =
-    origin && /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)
-      ? origin
-      : "";
+const ALLOWED_ORIGINS = new Set([
+  "https://bcksnap-3f858.web.app",
+  "https://bcksnap-3f858.firebaseapp.com",
+]);
 
+function isAllowedOrigin(origin: string | null): origin is string {
+  if (!origin) return false;
+
+  // Local development (flutter run -d chrome uses a random port).
+  if (/^https?:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
+    return true;
+  }
+
+  // Deployed Firebase Hosting site.
+  if (ALLOWED_ORIGINS.has(origin)) {
+    return true;
+  }
+
+  // Firebase Hosting preview channels (pull request deploys),
+  // e.g. https://bcksnap-3f858--pr12-branch-abc123.web.app
+  return /^https:\/\/bcksnap-3f858--[a-z0-9-]+\.web\.app$/.test(origin);
+}
+
+function getCorsHeaders(origin: string | null) {
   return {
-    ...(allowedOrigin
-      ? { "Access-Control-Allow-Origin": allowedOrigin }
+    ...(isAllowedOrigin(origin)
+      ? { "Access-Control-Allow-Origin": origin }
       : {}),
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin",
   };
 }
-
 
 async function createFirestoreDocumentAsAdmin(
   parentPath: string,
